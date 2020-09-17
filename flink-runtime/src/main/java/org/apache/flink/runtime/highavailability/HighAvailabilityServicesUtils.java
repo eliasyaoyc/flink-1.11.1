@@ -109,6 +109,7 @@ public class HighAvailabilityServicesUtils {
 					configuration,
 					addressResolution);
 
+				// 返回非高可用的服务类实例
 				return new StandaloneHaServices(
 					resourceManagerRpcUrl,
 					dispatcherRpcUrl,
@@ -116,6 +117,7 @@ public class HighAvailabilityServicesUtils {
 			case ZOOKEEPER:
 				BlobStoreService blobStoreService = BlobUtils.createBlobStoreFromConfig(configuration);
 
+				// 返回zk高可用服务类实例
 				return new ZooKeeperHaServices(
 					ZooKeeperUtils.startCuratorFramework(configuration),
 					executor,
@@ -123,6 +125,7 @@ public class HighAvailabilityServicesUtils {
 					blobStoreService);
 
 			case FACTORY_CLASS:
+				// 返回自定义 HA 服务类实例
 				return createCustomHAServices(configuration, executor);
 
 			default:
