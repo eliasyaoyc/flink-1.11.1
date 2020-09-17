@@ -134,6 +134,10 @@ public class StreamSourceContexts {
 	 * {@link SourceFunction.SourceContext} to be used for sources with automatic timestamps
 	 * and watermark emission.
 	 */
+	// Ingestion time 是事件进入Flink系统的时间，在Flink的Source中，会把当前时间戳作为时间戳，后续做窗口处理都会基于这个时间
+	// 与事件时间相比，摄入时间无法处理延时和无序的情况，但是不需要明确执行如何生成watermark。
+	// 在系统内部，摄入时间采用类似于事件时间处理方式进行处理，但是有自动生成的时间戳和自动的 watermark
+	// 可以放置 Flink 内部处理数据是发生乱序的情况，但无法解决数据达到 Flink 之前发生的乱序问题。如果需要解决此问题，可以使用EventTime
 	private static class AutomaticWatermarkContext<T> extends WatermarkContext<T> {
 
 		private final Output<StreamRecord<T>> output;

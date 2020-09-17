@@ -74,7 +74,7 @@ public class InternalTimerServiceImpl<K, N> implements InternalTimerService<N> {
 	/**
 	 * The one and only Future (if any) registered to execute the
 	 * next {@link Triggerable} action, when its (processing) time arrives.
-	 * */
+	 */
 	private ScheduledFuture<?> nextTimer;
 
 	// Variables to be set when the service is started.
@@ -91,7 +91,9 @@ public class InternalTimerServiceImpl<K, N> implements InternalTimerService<N> {
 
 	private TypeSerializer<N> namespaceDeserializer;
 
-	/** The restored timers snapshot, if any. */
+	/**
+	 * The restored timers snapshot, if any.
+	 */
 	private InternalTimersSnapshot<K, N> restoredTimersSnapshot;
 
 	InternalTimerServiceImpl(
@@ -125,9 +127,9 @@ public class InternalTimerServiceImpl<K, N> implements InternalTimerService<N> {
 	 * This method can be called multiple times, as long as it is called with the same serializers.
 	 */
 	public void startTimerService(
-			TypeSerializer<K> keySerializer,
-			TypeSerializer<N> namespaceSerializer,
-			Triggerable<K, N> triggerTarget) {
+		TypeSerializer<K> keySerializer,
+		TypeSerializer<N> namespaceSerializer,
+		Triggerable<K, N> triggerTarget) {
 
 		if (!isInitialized) {
 
@@ -197,21 +199,40 @@ public class InternalTimerServiceImpl<K, N> implements InternalTimerService<N> {
 		return currentWatermark;
 	}
 
+	/**
+	 * 注册ProcessingTime, 这个ProcessingTime 指的就是 Flink 处理数据的时间
+	 *
+	 * @param namespace 会被构造成为一个TimerHeapInternalTimer对象，然后放入KeyGroupedInternalPriorityQueue中
+	 * @param time      触发定时器的时间
+	 * @see InternalTimerServiceImpl#onProcessingTime(long) 方法会触发此方法注册的ProcessingTime
+	 */
 	@Override
 	public void registerProcessingTimeTimer(N namespace, long time) {
+		// ① 取出第一个任务，此任务是最快被触发的任务
 		InternalTimer<K, N> oldHead = processingTimeTimersQueue.peek();
+		// ② 把当前的任务创建后放入 processingTimeTimersQueue 这个优先级队列中
 		if (processingTimeTimersQueue.add(new TimerHeapInternalTimer<>(time, (K) keyContext.getCurrentKey(), namespace))) {
 			long nextTriggerTime = oldHead != null ? oldHead.getTimestamp() : Long.MAX_VALUE;
 			// check if we need to re-schedule our timer to earlier
+			// ③ 如果新的任务比在 ① 取出中的时间戳更小
 			if (time < nextTriggerTime) {
+				// 先把下一个需要执行的任务 取消等待新的任务注册
 				if (nextTimer != null) {
 					nextTimer.cancel(false);
 				}
+				// ④ 重新注册这个更小的timer
 				nextTimer = processingTimeService.registerTimer(time, this::onProcessingTime);
 			}
 		}
 	}
 
+	/**
+	 * 注册EventTime, 这个EventTime 指的就是 数据产生的时间
+	 *
+	 * @param namespace 会被构造成为一个TimerHeapInternalTimer对象，然后放入KeyGroupedInternalPriorityQueue中
+	 * @param time      触发定时器的时间
+	 * @see InternalTimerServiceImpl#advanceWatermark(long) 会被此方法触发这个timer
+	 */
 	@Override
 	public void registerEventTimeTimer(N namespace, long time) {
 		eventTimeTimersQueue.add(new TimerHeapInternalTimer<>(time, (K) keyContext.getCurrentKey(), namespace));
@@ -247,6 +268,12 @@ public class InternalTimerServiceImpl<K, N> implements InternalTimerService<N> {
 		}
 	}
 
+	/**
+	 * 用于触发 {@link InternalTimerServiceImpl#registerProcessingTimeTimer(Object, long)} 方法注册的 ProcessingTimer 任务.
+	 *
+	 * @param time 小于此时间的所有定时器，都会被触发.
+	 * @throws Exception
+	 */
 	private void onProcessingTime(long time) throws Exception {
 		// null out the timer in case the Triggerable calls registerProcessingTimeTimer()
 		// inside the callback.
@@ -257,6 +284,7 @@ public class InternalTimerServiceImpl<K, N> implements InternalTimerService<N> {
 		while ((timer = processingTimeTimersQueue.peek()) != null && timer.getTimestamp() <= time) {
 			processingTimeTimersQueue.poll();
 			keyContext.setCurrentKey(timer.getKey());
+			// 触发执行
 			triggerTarget.onProcessingTime(timer);
 		}
 
@@ -265,14 +293,22 @@ public class InternalTimerServiceImpl<K, N> implements InternalTimerService<N> {
 		}
 	}
 
+	/**
+	 * 触发在KeyGroupedInternalPriorityQueue 队列中的任务
+	 *
+	 * @param time
+	 * @throws Exception
+	 */
 	public void advanceWatermark(long time) throws Exception {
 		currentWatermark = time;
 
 		InternalTimer<K, N> timer;
 
+		// 循环从 eventTimersQueue 中依次取出触发时间小于参数time的所有定时器
 		while ((timer = eventTimeTimersQueue.peek()) != null && timer.getTimestamp() <= time) {
 			eventTimeTimersQueue.poll();
 			keyContext.setCurrentKey(timer.getKey());
+			// 进行触发
 			triggerTarget.onEventTime(timer);
 		}
 	}
@@ -303,8 +339,8 @@ public class InternalTimerServiceImpl<K, N> implements InternalTimerService<N> {
 	 * Restore the timers (both processing and event time ones) for a given {@code keyGroupIdx}.
 	 *
 	 * @param restoredSnapshot the restored snapshot containing the key-group's timers,
-	 *                       and the serializers that were used to write them
-	 * @param keyGroupIdx the id of the key-group to be put in the snapshot.
+	 *                         and the serializers that were used to write them
+	 * @param keyGroupIdx      the id of the key-group to be put in the snapshot.
 	 */
 	@SuppressWarnings("unchecked")
 	public void restoreTimersForKeyGroup(InternalTimersSnapshot<?, ?> restoredSnapshot, int keyGroupIdx) {
