@@ -1240,6 +1240,10 @@ public class DataStream<T> {
 		return doTransform(operatorName, outTypeInfo, operatorFactory);
 	}
 
+	/*
+	 * DataStream 就表征了由同一种类型元素构成的数据流，通过对DataStream 应用 map/filter 等操作，可以将一个 DataStream 转换为另一个DataStream
+	 * 这个转换过程就是根据不同的操作生成不同的Transformation，并将其加入StreamExecutionEnvironment 的 transformations 列表中
+	 */
 	protected <R> SingleOutputStreamOperator<R> doTransform(
 			String operatorName,
 			TypeInformation<R> outTypeInfo,
@@ -1248,6 +1252,7 @@ public class DataStream<T> {
 		// read the output type of the input Transform to coax out errors about MissingTypeInfo
 		transformation.getOutputType();
 
+		// ① 构建Transformation
 		OneInputTransformation<T, R> resultTransform = new OneInputTransformation<>(
 				this.transformation,
 				operatorName,
@@ -1258,6 +1263,7 @@ public class DataStream<T> {
 		@SuppressWarnings({"unchecked", "rawtypes"})
 		SingleOutputStreamOperator<R> returnStream = new SingleOutputStreamOperator(environment, resultTransform);
 
+		// ② 加入到 StreamExecutionEnvironment 的 transformations 列表中
 		getExecutionEnvironment().addOperator(resultTransform);
 
 		return returnStream;

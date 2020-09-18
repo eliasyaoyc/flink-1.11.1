@@ -227,6 +227,12 @@ public class StreamGraphGenerator {
 	 * <p>This checks whether we already transformed it and exits early in that case. If not it
 	 * delegates to one of the transformation specific methods.
 	 */
+	/**
+	 * StreamGraphGenerator 会基于 StreamExecutionEnvironment 的 transformations 列表来生成 StreamGraph。
+	 *
+	 * 在遍历 List<StreamTransformation> 生成 StreamGraph 的时候，会递归调用StreamGraphGenerator#transform方法。
+	 * 对于每一个 StreamTransformation, 确保当前其上游已经完成转换。StreamTransformations 被转换为 StreamGraph 中的节点 StreamNode，并为上下游节点添加边 StreamEdge。
+	 */
 	private Collection<Integer> transform(Transformation<?> transform) {
 
 		if (alreadyTransformed.containsKey(transform)) {
@@ -334,18 +340,24 @@ public class StreamGraphGenerator {
 	}
 
 	/**
-	 * Transforms a {@code PartitionTransformation}.
+	 * Transforms a {@code PartitionTransformation}. KeyedStream 的转换
 	 *
 	 * <p>For this we create a virtual node in the {@code StreamGraph} that holds the partition
 	 * property. @see StreamGraphGenerator
+	 *
+	 * 对于一些不包含物理转换操作的 StreamTransformation，如Partition，split/select，union，并不会生成StreamNode,
+	 * 而是生成一个带有特定属性的虚拟节点，当添加一条有虚拟节点指向下游节点的边时，会找到虚拟节点上游的物理节点，在两个物理节点
+	 * 之间添加边，并把虚拟转换操作的属性附着上去。
 	 */
 	private <T> Collection<Integer> transformPartition(PartitionTransformation<T> partition) {
 		Transformation<T> input = partition.getInput();
 		List<Integer> resultIds = new ArrayList<>();
 
+		// ① 递归地转换上游节点
 		Collection<Integer> transformedIds = transform(input);
 		for (Integer transformedId: transformedIds) {
 			int virtualId = Transformation.getNewNodeId();
+			// ② 添加虚拟节点
 			streamGraph.addVirtualPartitionNode(
 					transformedId, virtualId, partition.getPartitioner(), partition.getShuffleMode());
 			resultIds.add(virtualId);
@@ -668,15 +680,19 @@ public class StreamGraphGenerator {
 	 */
 	private <IN, OUT> Collection<Integer> transformOneInputTransform(OneInputTransformation<IN, OUT> transform) {
 
+		// ① 确保上游节点完成转换
 		Collection<Integer> inputIds = transform(transform.getInput());
 
 		// the recursive call might have already transformed this
+		// ② 由于是递归调用的，可能已经完成了转换
 		if (alreadyTransformed.containsKey(transform)) {
 			return alreadyTransformed.get(transform);
 		}
 
+		// ③ 确定资源共享组，用户如果没有指定，默认是 default
 		String slotSharingGroup = determineSlotSharingGroup(transform.getSlotSharingGroup(), inputIds);
 
+		// ④ 向 StreamGraph 中添加 Operator，这一步会生成对应的 StreamNode
 		streamGraph.addOperator(transform.getId(),
 				slotSharingGroup,
 				transform.getCoLocationGroupKey(),
@@ -695,6 +711,7 @@ public class StreamGraphGenerator {
 		streamGraph.setParallelism(transform.getId(), parallelism);
 		streamGraph.setMaxParallelism(transform.getId(), transform.getMaxParallelism());
 
+		// ⑤ 依次连接到上游节点，创建 StreamEdge
 		for (Integer inputId: inputIds) {
 			streamGraph.addEdge(inputId, transform.getId(), 0);
 		}

@@ -374,6 +374,17 @@ public class StreamGraph implements Pipeline {
 		}
 	}
 
+	/**
+	 * 往StreamNode 中添加 Node 节点
+	 *
+	 * @param vertexID
+	 * @param slotSharingGroup
+	 * @param coLocationGroup
+	 * @param vertexClass 对应 StreamNode 中的 JobVertexClass 来表示该节点在TaskManager 中运行的实际任务的类型
+	 * @param operatorFactory
+	 * @param operatorName 对应的StreamOperator
+	 * @return
+	 */
 	protected StreamNode addNode(
 			Integer vertexID,
 			@Nullable String slotSharingGroup,
@@ -386,6 +397,7 @@ public class StreamGraph implements Pipeline {
 			throw new RuntimeException("Duplicate vertexID " + vertexID);
 		}
 
+		// ① 创建Node
 		StreamNode vertex = new StreamNode(
 				vertexID,
 				slotSharingGroup,
@@ -395,6 +407,7 @@ public class StreamGraph implements Pipeline {
 				new ArrayList<OutputSelector<?>>(),
 				vertexClass);
 
+		// ② 添加Node，Node中保存了 StreamOperator 和 VertexClass 信息
 		streamNodes.put(vertexID, vertex);
 
 		return vertex;
@@ -478,6 +491,7 @@ public class StreamGraph implements Pipeline {
 			throw new IllegalStateException("Already has virtual partition node with id " + virtualId);
 		}
 
+		// 添加一个虚拟节点，后续添加边的时候会连接到实际的物理节点
 		virtualPartitionNodes.put(virtualId, new Tuple3<>(originalId, partitioner, shuffleMode));
 	}
 
@@ -511,6 +525,17 @@ public class StreamGraph implements Pipeline {
 
 	}
 
+	/**
+	 * 在每一个物理节点的转换上，会调用此方法在输入节点和当前节点之间建立边的连接
+	 *
+	 * @param upStreamVertexID
+	 * @param downStreamVertexID
+	 * @param typeNumber
+	 * @param partitioner
+	 * @param outputNames
+	 * @param outputTag
+	 * @param shuffleMode
+	 */
 	private void addEdgeInternal(Integer upStreamVertexID,
 			Integer downStreamVertexID,
 			int typeNumber,
@@ -519,6 +544,8 @@ public class StreamGraph implements Pipeline {
 			OutputTag outputTag,
 			ShuffleMode shuffleMode) {
 
+		// 判断是不是虚拟节点上的边，如果是则找到虚拟节点上游对应的物理节点
+		// 在两个物理节点之间添加，并把对应的 StreamPartitioner，或者 OutputTag 等补充信息添加到 StreamEdge中
 		if (virtualSideOutputNodes.containsKey(upStreamVertexID)) {
 			int virtualId = upStreamVertexID;
 			upStreamVertexID = virtualSideOutputNodes.get(virtualId).f0;
@@ -543,6 +570,7 @@ public class StreamGraph implements Pipeline {
 			shuffleMode = virtualPartitionNodes.get(virtualId).f2;
 			addEdgeInternal(upStreamVertexID, downStreamVertexID, typeNumber, partitioner, outputNames, outputTag, shuffleMode);
 		} else {
+			// 两个物理节点
 			StreamNode upstreamNode = getStreamNode(upStreamVertexID);
 			StreamNode downstreamNode = getStreamNode(downStreamVertexID);
 
@@ -567,8 +595,10 @@ public class StreamGraph implements Pipeline {
 				shuffleMode = ShuffleMode.UNDEFINED;
 			}
 
+			// 创建StreamEdge， 保留了 StreamPartitioner 等属性
 			StreamEdge edge = new StreamEdge(upstreamNode, downstreamNode, typeNumber, outputNames, partitioner, outputTag, shuffleMode);
 
+			// 分别将StreamEdge 添加到上游节点和下游节点
 			getStreamNode(edge.getSourceId()).addOutEdge(edge);
 			getStreamNode(edge.getTargetId()).addInEdge(edge);
 		}
