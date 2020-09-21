@@ -32,9 +32,11 @@ public class JobEdge implements java.io.Serializable {
 	private final JobVertex target;
 
 	/** The distribution pattern that should be used for this job edge. */
+	// 决定了在上游节点（生产者） 的子任务和下游节点 （消费者） 之间的连接模式
 	private final DistributionPattern distributionPattern;
 	
 	/** The data set at the source of the edge, may be null if the edge is not yet connected*/
+	// 中间数据集
 	private IntermediateDataSet source;
 	
 	/** The id of the source intermediate data set */
