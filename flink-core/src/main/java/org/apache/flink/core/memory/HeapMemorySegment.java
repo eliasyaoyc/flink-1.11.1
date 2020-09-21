@@ -45,6 +45,7 @@ public final class HeapMemorySegment extends MemorySegment {
 	 * An extra reference to the heap memory, so we can let byte array checks fail by the built-in
 	 * checks automatically without extra checks.
 	 */
+	// 指向heapMemory的额外引用，用来如数组越界的检查
 	private byte[] memory;
 
 	/**

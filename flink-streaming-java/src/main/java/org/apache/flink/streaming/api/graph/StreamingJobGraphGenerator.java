@@ -155,10 +155,12 @@ public class StreamingJobGraphGenerator {
 		jobGraph = new JobGraph(jobID, streamGraph.getJobName());
 	}
 
+	// 根据 StreamGraph，生成 JobGraph
 	private JobGraph createJobGraph() {
 		preValidate();
 
 		// make sure that all vertices start immediately
+		// streaming 模式下，调度模式是所有节点（vertices）一起启动
 		jobGraph.setScheduleMode(streamGraph.getScheduleMode());
 
 		// Generate deterministic hashes for the nodes in order to identify them across
@@ -173,7 +175,7 @@ public class StreamingJobGraphGenerator {
 			legacyHashes.add(hasher.traverseStreamGraphAndGenerateHashes(streamGraph));
 		}
 
-		// 主要的转换逻辑，生成 JobVetex,JobEdge 等
+		// 主要的转换逻辑，生成 JobVertex,JobEdge 等,并尽可能的将多个几点chain在一起
 		setChaining(hashes, legacyHashes);
 
 		// 将每个 JobVertex 的输入边集合也序列化到该JobVertex 的 StreamConfig 中(出边集合已经在setChaining的时候写入了)

@@ -124,12 +124,14 @@ public abstract class MemorySegment {
 	 * segment will point to undefined addresses outside the heap and may in out-of-order execution
 	 * cases cause segmentation faults.
 	 */
+	// 堆内存引用
 	protected final byte[] heapMemory;
 
 	/**
 	 * The address to the data, relative to the heap memory byte array. If the heap memory byte
 	 * array is <tt>null</tt>, this becomes an absolute memory address outside the heap.
 	 */
+	// 堆外内存地址
 	protected long address;
 
 	/**
