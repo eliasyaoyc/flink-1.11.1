@@ -32,7 +32,9 @@ public class ProcessingTimeTrigger extends Trigger<Object, TimeWindow> {
 	private ProcessingTimeTrigger() {}
 
 	@Override
+	// 每个元素进入窗口都会调用此方法
 	public TriggerResult onElement(Object element, long timestamp, TimeWindow window, TriggerContext ctx) {
+		// 注册定时器，当前系统时间达到 window end timestamp 时会回调该 trigger的 onProcessingTime 方法
 		ctx.registerProcessingTimeTimer(window.maxTimestamp());
 		return TriggerResult.CONTINUE;
 	}
@@ -43,6 +45,7 @@ public class ProcessingTimeTrigger extends Trigger<Object, TimeWindow> {
 	}
 
 	@Override
+	// 返回结果表示执行窗口计算并清空窗口
 	public TriggerResult onProcessingTime(long time, TimeWindow window, TriggerContext ctx) {
 		return TriggerResult.FIRE;
 	}
