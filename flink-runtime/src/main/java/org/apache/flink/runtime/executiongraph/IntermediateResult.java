@@ -31,10 +31,11 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 
 public class IntermediateResult {
 
+	// 对应的 IntermediateDataSet 的ID
 	private final IntermediateDataSetID id;
-
+	// 生产者
 	private final ExecutionJobVertex producer;
-
+	// 对应 ExecutionJobVertex 的并行度
 	private final IntermediateResultPartition[] partitions;
 
 	/**

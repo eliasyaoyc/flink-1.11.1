@@ -92,6 +92,7 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 
 	private final JobVertex jobVertex;
 
+	// ExecutionVertex 对应一个并行的子任务
 	private final ExecutionVertex[] taskVertices;
 
 	private final IntermediateResult[] producedDataSets;
