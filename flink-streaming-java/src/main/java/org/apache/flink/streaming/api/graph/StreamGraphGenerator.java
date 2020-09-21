@@ -196,6 +196,10 @@ public class StreamGraphGenerator {
 		this.savepointRestoreSettings = savepointRestoreSettings;
 	}
 
+	/**
+	 * 生成 StreamGraph
+	 * @return {@link StreamGraph}
+	 */
 	public StreamGraph generate() {
 		streamGraph = new StreamGraph(executionConfig, checkpointConfig, savepointRestoreSettings);
 		streamGraph.setStateBackend(stateBackend);
@@ -208,6 +212,7 @@ public class StreamGraphGenerator {
 
 		alreadyTransformed = new HashMap<>();
 
+		// 自底向上 （sink -> source） 对转换树的每个 transformation 进行转换
 		for (Transformation<?> transformation: transformations) {
 			transform(transformation);
 		}
@@ -252,8 +257,10 @@ public class StreamGraphGenerator {
 		}
 
 		// call at least once to trigger exceptions about MissingTypeInfo
+		// 为了触发 MissingTypeInfo 的异常
 		transform.getOutputType();
 
+		// 进行转换
 		Collection<Integer> transformedIds;
 		if (transform instanceof OneInputTransformation<?, ?>) {
 			transformedIds = transformOneInputTransform((OneInputTransformation<?, ?>) transform);
@@ -680,7 +687,7 @@ public class StreamGraphGenerator {
 	 */
 	private <IN, OUT> Collection<Integer> transformOneInputTransform(OneInputTransformation<IN, OUT> transform) {
 
-		// ① 确保上游节点完成转换
+		// ① 确保上游节点完成转换，递归对该transform 的直接上游 transform 进行转换，获得直接上游id集合
 		Collection<Integer> inputIds = transform(transform.getInput());
 
 		// the recursive call might have already transformed this
@@ -711,7 +718,7 @@ public class StreamGraphGenerator {
 		streamGraph.setParallelism(transform.getId(), parallelism);
 		streamGraph.setMaxParallelism(transform.getId(), transform.getMaxParallelism());
 
-		// ⑤ 依次连接到上游节点，创建 StreamEdge
+		// ⑤ 依次连接到上游节点，添加 StreamEdge
 		for (Integer inputId: inputIds) {
 			streamGraph.addEdge(inputId, transform.getId(), 0);
 		}

@@ -514,6 +514,8 @@ public class StreamGraph implements Pipeline {
 		}
 	}
 
+	//对partition的转换没有生成具体的StreamNode和StreamEdge，而是添加一个虚节点。当partition的下游transform（如map）添加edge时（调用StreamGraph.addEdge），
+	// 会把partition信息写入到edge中。
 	public void addEdge(Integer upStreamVertexID, Integer downStreamVertexID, int typeNumber) {
 		addEdgeInternal(upStreamVertexID,
 				downStreamVertexID,
@@ -548,13 +550,16 @@ public class StreamGraph implements Pipeline {
 		// 在两个物理节点之间添加，并把对应的 StreamPartitioner，或者 OutputTag 等补充信息添加到 StreamEdge中
 		if (virtualSideOutputNodes.containsKey(upStreamVertexID)) {
 			int virtualId = upStreamVertexID;
+			// select 上游的节点id
 			upStreamVertexID = virtualSideOutputNodes.get(virtualId).f0;
 			if (outputTag == null) {
 				outputTag = virtualSideOutputNodes.get(virtualId).f1;
 			}
 			addEdgeInternal(upStreamVertexID, downStreamVertexID, typeNumber, partitioner, null, outputTag, shuffleMode);
+			// 当上游是Partition 时，递归调用，并传入 partitioner 信息
 		} else if (virtualSelectNodes.containsKey(upStreamVertexID)) {
 			int virtualId = upStreamVertexID;
+			// partition 上游的节点id
 			upStreamVertexID = virtualSelectNodes.get(virtualId).f0;
 			if (outputNames.isEmpty()) {
 				// selections that happen downstream override earlier selections
@@ -570,18 +575,20 @@ public class StreamGraph implements Pipeline {
 			shuffleMode = virtualPartitionNodes.get(virtualId).f2;
 			addEdgeInternal(upStreamVertexID, downStreamVertexID, typeNumber, partitioner, outputNames, outputTag, shuffleMode);
 		} else {
-			// 两个物理节点
+			// 两个物理节点，真正构建StreamEdge
 			StreamNode upstreamNode = getStreamNode(upStreamVertexID);
 			StreamNode downstreamNode = getStreamNode(downStreamVertexID);
 
 			// If no partitioner was specified and the parallelism of upstream and downstream
 			// operator matches use forward partitioning, use rebalance otherwise.
+			// 未指定partitioner 的话，会为其选择 forward 或 rebalance 分区
 			if (partitioner == null && upstreamNode.getParallelism() == downstreamNode.getParallelism()) {
 				partitioner = new ForwardPartitioner<Object>();
 			} else if (partitioner == null) {
 				partitioner = new RebalancePartitioner<Object>();
 			}
 
+			// 健康检查，forward 分区必须要上下游的并发度一致
 			if (partitioner instanceof ForwardPartitioner) {
 				if (upstreamNode.getParallelism() != downstreamNode.getParallelism()) {
 					throw new UnsupportedOperationException("Forward partitioning does not allow " +
