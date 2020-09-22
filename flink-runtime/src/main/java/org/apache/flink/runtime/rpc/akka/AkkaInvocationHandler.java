@@ -176,6 +176,7 @@ class AkkaInvocationHandler implements InvocationHandler, AkkaBasedEndpoint, Rpc
 
 	@Override
 	public void start() {
+		// 向 Akka actor 发送 START 消息
 		rpcEndpoint.tell(ControlMessages.START, ActorRef.noSender());
 	}
 
@@ -202,12 +203,14 @@ class AkkaInvocationHandler implements InvocationHandler, AkkaBasedEndpoint, Rpc
 		Annotation[][] parameterAnnotations = method.getParameterAnnotations();
 		Time futureTimeout = extractRpcTimeout(parameterAnnotations, args, timeout);
 
+		// 将 RPC 调用封装为  RpcInvocation (会根据RpcEndpoint 是本地还是远程的)
 		final RpcInvocation rpcInvocation = createRpcInvocationMessage(methodName, parameterTypes, args);
 
 		Class<?> returnType = method.getReturnType();
 
 		final Object result;
 
+		// 根据RPC 方法是否有返回值决定调用 tell 还是 ask
 		if (Objects.equals(returnType, Void.TYPE)) {
 			tell(rpcInvocation);
 

@@ -126,6 +126,7 @@ public abstract class RpcEndpoint implements RpcGateway, AutoCloseableAsync {
 		this.rpcService = checkNotNull(rpcService, "rpcService");
 		this.endpointId = checkNotNull(endpointId, "endpointId");
 
+		// 初始化服务
 		this.rpcServer = rpcService.startServer(this);
 
 		this.mainThreadExecutor = new MainThreadExecutor(rpcServer, this::validateRunsInMainThread);
@@ -261,6 +262,7 @@ public abstract class RpcEndpoint implements RpcGateway, AutoCloseableAsync {
 	 * @return Self gateway of the specified type which can be used to issue asynchronous rpcs
 	 */
 	public <C extends RpcGateway> C getSelfGateway(Class<C> selfGatewayType) {
+		// rpcServer 是通过动态代理创建的
 		if (selfGatewayType.isInstance(rpcServer)) {
 			@SuppressWarnings("unchecked")
 			C selfGateway = ((C) rpcServer);

@@ -173,8 +173,8 @@ public class AkkaRpcService implements RpcService {
 	// this method does not mutate state and is thus thread-safe
 	@Override
 	public <C extends RpcGateway> CompletableFuture<C> connect(
-			final String address,
-			final Class<C> clazz) {
+		final String address,
+		final Class<C> clazz) {
 
 		return connectInternal(
 			address,
@@ -214,11 +214,19 @@ public class AkkaRpcService implements RpcService {
 			});
 	}
 
+	/**
+	 * Start a rpc server which forwards the remote procedure calls to the provided rpc endpoint.
+	 *
+	 * @param rpcEndpoint Rpc protocol to dispatch the rpcs to
+	 * @param <C>         Type of the rpc endpoint
+	 * @return Self gateway to dispatch remote procedure calls to oneself
+	 */
 	@Override
 	public <C extends RpcEndpoint & RpcGateway> RpcServer startServer(C rpcEndpoint) {
 		checkNotNull(rpcEndpoint, "rpc endpoint");
 
 		final SupervisorActor.ActorRegistration actorRegistration = registerAkkaRpcActor(rpcEndpoint);
+		// 创建 Akka actor
 		final ActorRef actorRef = actorRegistration.getActorRef();
 		final CompletableFuture<Void> actorTerminationFuture = actorRegistration.getTerminationFuture();
 
@@ -233,6 +241,7 @@ public class AkkaRpcService implements RpcService {
 			hostname = host.get();
 		}
 
+		// 代理的接口
 		Set<Class<?>> implementedRpcGateways = new HashSet<>(RpcUtils.extractImplementedRpcGateways(rpcEndpoint.getClass()));
 
 		implementedRpcGateways.add(RpcServer.class);
@@ -240,6 +249,7 @@ public class AkkaRpcService implements RpcService {
 
 		final InvocationHandler akkaInvocationHandler;
 
+		// 创建 InvocationHandler
 		if (rpcEndpoint instanceof FencedRpcEndpoint) {
 			// a FencedRpcEndpoint needs a FencedAkkaInvocationHandler
 			akkaInvocationHandler = new FencedAkkaInvocationHandler<>(
@@ -269,6 +279,7 @@ public class AkkaRpcService implements RpcService {
 		// code is loaded dynamically (for example from an OSGI bundle) through a custom ClassLoader
 		ClassLoader classLoader = getClass().getClassLoader();
 
+		// 通过动态代理创建代理对象
 		@SuppressWarnings("unchecked")
 		RpcServer server = (RpcServer) Proxy.newProxyInstance(
 			classLoader,
@@ -473,22 +484,25 @@ public class AkkaRpcService implements RpcService {
 	}
 
 	private <C extends RpcGateway> CompletableFuture<C> connectInternal(
-			final String address,
-			final Class<C> clazz,
-			Function<ActorRef, InvocationHandler> invocationHandlerFactory) {
+		final String address,
+		final Class<C> clazz,
+		Function<ActorRef, InvocationHandler> invocationHandlerFactory) {
 		checkState(!stopped, "RpcService is stopped");
 
 		LOG.debug("Try to connect to remote RPC endpoint with address {}. Returning a {} gateway.",
 			address, clazz.getName());
 
+		// 获取 actor 的引用 ActorRef
 		final CompletableFuture<ActorRef> actorRefFuture = resolveActorAddress(address);
 
+		// 发送握手消息
 		final CompletableFuture<HandshakeSuccessMessage> handshakeFuture = actorRefFuture.thenCompose(
 			(ActorRef actorRef) -> FutureUtils.toJava(
 				Patterns
 					.ask(actorRef, new RemoteHandshakeMessage(clazz, getVersion()), configuration.getTimeout().toMilliseconds())
 					.<HandshakeSuccessMessage>mapTo(ClassTag$.MODULE$.<HandshakeSuccessMessage>apply(HandshakeSuccessMessage.class))));
 
+		// 创建 InvocationHandler，并通过动态代理生成代理对象
 		return actorRefFuture.thenCombineAsync(
 			handshakeFuture,
 			(ActorRef actorRef, HandshakeSuccessMessage ignored) -> {

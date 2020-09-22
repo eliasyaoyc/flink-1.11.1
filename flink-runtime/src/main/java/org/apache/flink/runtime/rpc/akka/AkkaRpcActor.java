@@ -137,6 +137,7 @@ class AkkaRpcActor<T extends RpcEndpoint & RpcGateway> extends AbstractActor {
 
 	@Override
 	public Receive createReceive() {
+		// 不同类型消息的处理方式
 		return ReceiveBuilder.create()
 			.match(RemoteHandshakeMessage.class, this::handleHandshakeMessage)
 			.match(ControlMessages.class, this::handleControlMessage)
@@ -144,6 +145,7 @@ class AkkaRpcActor<T extends RpcEndpoint & RpcGateway> extends AbstractActor {
 			.build();
 	}
 
+	// 处理 RPC 调用
 	private void handleMessage(final Object message) {
 		if (state.isRunning()) {
 			mainThreadValidator.enterMainThread();
@@ -251,6 +253,7 @@ class AkkaRpcActor<T extends RpcEndpoint & RpcGateway> extends AbstractActor {
 			String methodName = rpcInvocation.getMethodName();
 			Class<?>[] parameterTypes = rpcInvocation.getParameterTypes();
 
+			// 获取需要调用的方法
 			rpcMethod = lookupRpcMethod(methodName, parameterTypes);
 		} catch (ClassNotFoundException e) {
 			log.error("Could not load method arguments.", e);
@@ -269,6 +272,7 @@ class AkkaRpcActor<T extends RpcEndpoint & RpcGateway> extends AbstractActor {
 			getSender().tell(new Status.Failure(rpcException), getSelf());
 		}
 
+		// 通过反射执行
 		if (rpcMethod != null) {
 			try {
 				// this supports declaration of anonymous classes
@@ -293,6 +297,7 @@ class AkkaRpcActor<T extends RpcEndpoint & RpcGateway> extends AbstractActor {
 
 					final String methodName = rpcMethod.getName();
 
+					// 向调用方发送执行结果
 					if (result instanceof CompletableFuture) {
 						final CompletableFuture<?> responseFuture = (CompletableFuture<?>) result;
 						sendAsyncResponse(responseFuture, methodName);
