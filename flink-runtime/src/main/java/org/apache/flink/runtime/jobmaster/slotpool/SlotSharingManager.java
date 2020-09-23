@@ -321,6 +321,7 @@ public class SlotSharingManager {
 		private final SlotRequestId slotRequestId;
 
 		// all task slots except for the root slots have a group id assigned
+		// 除了 root 节点，每个节点都有一个 groupId 用来区分一个 TaskSlot。可能是 JobVertexID，也可能是 CoLocationGroup 的 ID
 		@Nullable
 		private final AbstractID groupId;
 
@@ -707,6 +708,7 @@ public class SlotSharingManager {
 			singleLogicalSlotFuture = parent.getSlotContextFuture()
 				.thenApply(
 					(SlotContext slotContext) -> {
+						// 在父节点被分配了 PhysicalSlot 后，创建 SingleLogicalSlot
 						LOG.trace("Fulfill single task slot [{}] with slot [{}].", slotRequestId, slotContext.getAllocationId());
 						return new SingleLogicalSlot(
 							slotRequestId,
