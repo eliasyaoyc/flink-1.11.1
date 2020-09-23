@@ -385,6 +385,7 @@ public abstract class Dispatcher extends PermanentlyFencedRpcEndpoint<Dispatcher
 		return CompletableFuture.supplyAsync(
 			() -> {
 				try {
+					// 创建 JobManagerRunner
 					return jobManagerRunnerFactory.createJobManagerRunner(
 						jobGraph,
 						configuration,
@@ -431,6 +432,7 @@ public abstract class Dispatcher extends PermanentlyFencedRpcEndpoint<Dispatcher
 					return null;
 				}, getMainThreadExecutor()));
 
+		// 启动 JobManager
 		jobManagerRunner.start();
 
 		return jobManagerRunner;

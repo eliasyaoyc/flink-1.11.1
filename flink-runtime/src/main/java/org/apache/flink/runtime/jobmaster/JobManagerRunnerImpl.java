@@ -166,6 +166,7 @@ public class JobManagerRunnerImpl implements LeaderContender, OnCompletionAction
 	@Override
 	public void start() throws Exception {
 		try {
+			// 竞争leader
 			leaderElectionService.start(this);
 		} catch (Exception e) {
 			log.error("Could not start the JobManager because the leader election service did not start.", e);
@@ -268,6 +269,9 @@ public class JobManagerRunnerImpl implements LeaderContender, OnCompletionAction
 	// Leadership methods
 	//----------------------------------------------------------------------------------------------
 
+	/**
+	 * 被选举成 leader
+	 */
 	@Override
 	public void grantLeadership(final UUID leaderSessionID) {
 		synchronized (lock) {
@@ -315,6 +319,7 @@ public class JobManagerRunnerImpl implements LeaderContender, OnCompletionAction
 
 		final CompletableFuture<Acknowledge> startFuture;
 		try {
+			// 使用特定的 JobMasterId 启动 JobMaster
 			startFuture = jobMasterService.start(new JobMasterId(leaderSessionId));
 		} catch (Exception e) {
 			return FutureUtils.completedExceptionally(new FlinkException("Failed to start the JobMaster.", e));
