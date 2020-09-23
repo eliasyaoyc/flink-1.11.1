@@ -437,6 +437,14 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
 		closeJobManagerConnection(jobId, cause);
 	}
 
+	/**
+	 * 要求 TaskExecutor 分配 slot
+	 *
+	 * @param jobMasterId id of the JobMaster
+	 * @param slotRequest The slot to request
+	 * @param timeout
+	 * @return
+	 */
 	@Override
 	public CompletableFuture<Acknowledge> requestSlot(
 			JobMasterId jobMasterId,
@@ -917,6 +925,7 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
 		}
 
 		if (worker != null) {
+			// 停止对应的worker，具体行为和不同的 ResourceManager 的实现有关
 			if (stopWorker(worker)) {
 				closeTaskManagerConnection(worker.getResourceID(), cause);
 			} else {
@@ -1142,12 +1151,14 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
 		public void releaseResource(InstanceID instanceId, Exception cause) {
 			validateRunsInMainThread();
 
+			// 释放资源
 			ResourceManager.this.releaseResource(instanceId, cause);
 		}
 
 		@Override
 		public boolean allocateResource(WorkerResourceSpec workerResourceSpec) {
 			validateRunsInMainThread();
+			// 申请新的资源，具体行为和不同的 ResourceManager 的实现有关。其返回的列表相当于是承诺即将分配的资源
 			return startNewWorker(workerResourceSpec);
 		}
 

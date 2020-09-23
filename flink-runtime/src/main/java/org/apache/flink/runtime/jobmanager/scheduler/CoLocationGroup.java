@@ -32,6 +32,8 @@ import org.apache.flink.util.Preconditions;
  * 
  * <p>The co-location group is used for example to make sure that the i-th subtasks for iteration
  * head and iteration tail are scheduled to the same TaskManager.</p>
+ *
+ * 相同的 SlotSharingGroup 的不同 JobVertex，它们的第 n 个子任务必须保证都在同一个 slot 中，这是一种强制性的约束
  */
 public class CoLocationGroup implements java.io.Serializable {
 	

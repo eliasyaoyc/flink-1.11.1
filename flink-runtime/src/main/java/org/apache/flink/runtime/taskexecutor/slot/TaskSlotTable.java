@@ -44,6 +44,8 @@ import java.util.UUID;
  * to a job manager.
  *
  * <p>Before the task slot table can be used, it must be started via the {@link #start} method.
+ *
+ * TaskExecutor 通过 TaskSlotTable 来管理它所拥有的所有 slot
  */
 public interface TaskSlotTable<T extends TaskSlotPayload> extends TimeoutListener<AllocationID>, AutoCloseableAsync {
 	/**

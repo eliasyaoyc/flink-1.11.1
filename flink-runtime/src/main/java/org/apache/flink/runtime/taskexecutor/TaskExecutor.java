@@ -1177,6 +1177,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		InstanceID taskExecutorRegistrationId,
 		ClusterInformation clusterInformation) {
 
+		// 首次建立连接，向 RM 报告 slot 信息
 		final CompletableFuture<Acknowledge> slotReportResponseFuture = resourceManagerGateway.sendSlotReport(
 			getResourceID(),
 			taskExecutorRegistrationId,
@@ -1285,6 +1286,10 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 	//  Internal job manager connection methods
 	// ------------------------------------------------------------------------
 
+	/**
+	 * 在 Slot 被分配之后，TaskExecutor 需要将对应的 slot 提供给 JobManager
+	 * @param jobId
+	 */
 	private void offerSlotsToJobManager(final JobID jobId) {
 		jobTable
 			.getConnection(jobId)
@@ -1298,7 +1303,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 			log.info("Offer reserved slots to the leader of job {}.", jobId);
 
 			final JobMasterGateway jobMasterGateway = jobManagerConnection.getJobManagerGateway();
-
+			// 获取分配给当前 job 的 slot，这里只会取得状态为 allocated 的 slot
 			final Iterator<TaskSlot<Task>> reservedSlotsIterator = taskSlotTable.getAllocatedSlots(jobId);
 			final JobMasterId jobMasterId = jobManagerConnection.getJobMasterId();
 
@@ -1309,6 +1314,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				reservedSlots.add(offer);
 			}
 
+			// 通过 RPC 调用，将slot提供给 JobMaster
 			CompletableFuture<Collection<SlotOffer>> acceptedSlotsFuture = jobMasterGateway.offerSlots(
 				getResourceID(),
 				reservedSlots,
@@ -1326,6 +1332,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 	private BiConsumer<Iterable<SlotOffer>, Throwable> handleAcceptedSlotOffers(JobID jobId, JobMasterGateway jobMasterGateway, JobMasterId jobMasterId, Collection<SlotOffer> offeredSlots) {
 		return (Iterable<SlotOffer> acceptedSlots, Throwable throwable) -> {
 			if (throwable != null) {
+				// 超时则重试
 				if (throwable instanceof TimeoutException) {
 					log.info("Slot offering to JobManager did not finish in time. Retrying the slot offering.");
 					// We ran into a timeout. Try again.
@@ -1335,14 +1342,17 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 						"and returning them to the ResourceManager.", throwable);
 
 					// We encountered an exception. Free the slots and return them to the RM.
+					// 发生异常，则释放所有的slot
 					for (SlotOffer reservedSlot : offeredSlots) {
 						freeSlotInternal(reservedSlot.getAllocationId(), throwable);
 					}
 				}
 			} else {
 				// check if the response is still valid
+				// 调用成功
 				if (isJobManagerConnectionValid(jobId, jobMasterId)) {
 					// mark accepted slots active
+					// 对于被 JobMaster 确认接受的 slot 标记为 Active状态
 					for (SlotOffer acceptedSlot : acceptedSlots) {
 						try {
 							if (!taskSlotTable.markSlotActive(acceptedSlot.getAllocationId())) {
@@ -1367,6 +1377,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 					final Exception e = new Exception("The slot was rejected by the JobManager.");
 
+					// 释放剩余没有被接受的 slot
 					for (SlotOffer rejectedSlot : offeredSlots) {
 						freeSlotInternal(rejectedSlot.getAllocationId(), e);
 					}
@@ -1636,12 +1647,15 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		try {
 			final JobID jobId = taskSlotTable.getOwningJob(allocationId);
 
+			// 尝试释放 allocationId 绑定的 slot
 			final int slotIndex = taskSlotTable.freeSlot(allocationId, cause);
 
 			if (slotIndex != -1) {
 
+				// 成功释放 slot
 				if (isConnectedToResourceManager()) {
 					// the slot was freed. Tell the RM about it
+					// 告知 ResourceManager 当前 slot 可用
 					ResourceManagerGateway resourceManagerGateway = establishedResourceManagerConnection.getResourceManagerGateway();
 
 					resourceManagerGateway.notifySlotAvailable(
@@ -1651,6 +1665,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				}
 
 				if (jobId != null) {
+					// 如果和 allocationID 绑定的 Job 已经没有分配的 slot 了，那么可以断开和 JobMaster 的连接了
 					closeJobManagerConnectionIfNoAllocatedResources(jobId);
 				}
 			}
@@ -2022,6 +2037,9 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		}
 	}
 
+	/**
+	 * 定期和 ResourceManager 发送心跳信息 的内部类
+	 */
 	private class ResourceManagerHeartbeatListener implements HeartbeatListener<Void, TaskExecutorHeartbeatPayload> {
 
 		@Override

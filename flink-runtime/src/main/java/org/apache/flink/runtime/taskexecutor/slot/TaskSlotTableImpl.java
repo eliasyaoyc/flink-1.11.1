@@ -242,6 +242,15 @@ public class TaskSlotTableImpl<T extends TaskSlotPayload> implements TaskSlotTab
 	// Slot methods
 	// ---------------------------------------------------------------------
 
+	/**
+	 * 可以将指定的 index 的 slot 分配给 AllocationID 对应的请求.
+	 *
+	 * @param index of the task slot to allocate, use negative value for dynamic slot allocation
+	 * @param jobId to allocate the task slot for
+	 * @param allocationId identifying the allocation
+	 * @param slotTimeout until the slot times out
+	 * @return
+	 */
 	@VisibleForTesting
 	@Override
 	public boolean allocateSlot(int index, JobID jobId, AllocationID allocationId, Time slotTimeout) {
