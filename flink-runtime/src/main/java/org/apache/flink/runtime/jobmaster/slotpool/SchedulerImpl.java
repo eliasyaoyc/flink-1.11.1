@@ -202,9 +202,11 @@ public class SchedulerImpl implements Scheduler {
 			SlotProfile slotProfile,
 			@Nullable Time allocationTimeout) {
 
+		// 先尝试从 SlotPool 可用的 AllocatedSlot 中获取
 		Optional<SlotAndLocality> slotAndLocality = tryAllocateFromAvailable(slotRequestId, slotProfile);
 
 		if (slotAndLocality.isPresent()) {
+			// 如果有已经有可用的了，就创建一个 SingleLogicalSlot，并作为 AllocatedSlot 的payload
 			// already successful from available
 			try {
 				return CompletableFuture.completedFuture(
@@ -292,6 +294,7 @@ public class SchedulerImpl implements Scheduler {
 		SlotProfile slotProfile,
 		@Nullable Time allocationTimeout) {
 		// allocate slot with slot sharing
+		// 每一个 SlotSharingGroup 对应一个 SlotSharingManager
 		final SlotSharingManager multiTaskSlotManager = slotSharingManagers.computeIfAbsent(
 			scheduledUnit.getSlotSharingGroupId(),
 			id -> new SlotSharingManager(
@@ -299,9 +302,11 @@ public class SchedulerImpl implements Scheduler {
 				slotPool,
 				this));
 
+		// 分配 MultiTaskSlot
 		final SlotSharingManager.MultiTaskSlotLocality multiTaskSlotLocality;
 		try {
 			if (scheduledUnit.getCoLocationConstraint() != null) {
+				// 存在 ColLocation 约束
 				multiTaskSlotLocality = allocateCoLocatedMultiTaskSlot(
 					scheduledUnit.getCoLocationConstraint(),
 					multiTaskSlotManager,
@@ -321,6 +326,7 @@ public class SchedulerImpl implements Scheduler {
 		// sanity check
 		Preconditions.checkState(!multiTaskSlotLocality.getMultiTaskSlot().contains(scheduledUnit.getJobVertexId()));
 
+		// 在 MultiTaskSlot 下创建叶子节点 SingleTaskSlot，并获取可以分配给任务的 SingleLogicalSlot
 		final SlotSharingManager.SingleTaskSlot leaf = multiTaskSlotLocality.getMultiTaskSlot().allocateSingleTaskSlot(
 			slotRequestId,
 			slotProfile.getTaskResourceProfile(),
@@ -346,6 +352,9 @@ public class SchedulerImpl implements Scheduler {
 		SlotSharingManager multiTaskSlotManager,
 		SlotProfile slotProfile,
 		@Nullable Time allocationTimeout) throws NoResourceAvailableException {
+		// coLocationConstraint 会和分配给它的 MultiTaskSlot(不是root) 的 SlotRequestId 绑定
+		// 这个绑定关系只有在分配了 MultiTaskSlot 之后才会生成
+		// 可以根据 SlotRequestId 直接定位到 MultiTaskSlot
 		final SlotRequestId coLocationSlotRequestId = coLocationConstraint.getSlotRequestId();
 
 		if (coLocationSlotRequestId != null) {
@@ -378,6 +387,7 @@ public class SchedulerImpl implements Scheduler {
 				slotProfile.getPreviousExecutionGraphAllocations());
 		}
 
+		// 为这个 coLocationConstraint 分配 MultiTaskSlot，先找到符合要求的root MultiTaskSlot
 		// get a new multi task slot
 		SlotSharingManager.MultiTaskSlotLocality multiTaskSlotLocality = allocateMultiTaskSlot(
 			coLocationConstraint.getGroupId(),
@@ -394,6 +404,7 @@ public class SchedulerImpl implements Scheduler {
 				"co location constraint " + coLocationConstraint + '.');
 		}
 
+		// 在 root MultiTaskSlot 下面创建一个二级的 MultiTaskSlot，分配给这个 coLocationConstraint
 		final SlotRequestId slotRequestId = new SlotRequestId();
 		final SlotSharingManager.MultiTaskSlot coLocationSlot =
 			multiTaskSlotLocality.getMultiTaskSlot().allocateMultiTaskSlot(
@@ -401,6 +412,7 @@ public class SchedulerImpl implements Scheduler {
 				coLocationConstraint.getGroupId());
 
 		// mark the requested slot as co-located slot for other co-located tasks
+		// 为 coLocationConstraint 绑定 slotRequestId，后续就可以直接通过这个 slotRequestId 定位到 MultiTaskSlot
 		coLocationConstraint.setSlotRequestId(slotRequestId);
 
 		// lock the co-location constraint once we have obtained the allocated slot
@@ -409,6 +421,7 @@ public class SchedulerImpl implements Scheduler {
 				if (throwable == null) {
 					// check whether we are still assigned to the co-location constraint
 					if (Objects.equals(coLocationConstraint.getSlotRequestId(), slotRequestId)) {
+						// 为这个 coLocationConstraint 绑定位置
 						coLocationConstraint.lockLocation(slotContext.getTaskManagerLocation());
 					} else {
 						log.debug("Failed to lock colocation constraint {} because assigned slot " +
@@ -448,37 +461,52 @@ public class SchedulerImpl implements Scheduler {
 			SlotProfile slotProfile,
 			@Nullable Time allocationTimeout) {
 
+		// 找到符合要求的已经分配了 AllocatedSlot 的 root MultiTaskSlot 集合，
+		// 这里的符合要求是指 root MultiTaskSlot 不含有当前 groupId, 避免把 groupId 相同（同一个 JobVertex）的不同 task 分配到同一个 slot 中
 		Collection<SlotSelectionStrategy.SlotInfoAndResources> resolvedRootSlotsInfo =
 				slotSharingManager.listResolvedRootSlotInfo(groupId);
 
+		// 由 slotSelectionStrategy 选出最符合条件的
 		SlotSelectionStrategy.SlotInfoAndLocality bestResolvedRootSlotWithLocality =
 			slotSelectionStrategy.selectBestSlotForProfile(resolvedRootSlotsInfo, slotProfile).orElse(null);
 
+		// 对 MultiTaskSlot 和 Locality 做一层封装
 		final SlotSharingManager.MultiTaskSlotLocality multiTaskSlotLocality = bestResolvedRootSlotWithLocality != null ?
 			new SlotSharingManager.MultiTaskSlotLocality(
 				slotSharingManager.getResolvedRootSlot(bestResolvedRootSlotWithLocality.getSlotInfo()),
 				bestResolvedRootSlotWithLocality.getLocality()) :
 			null;
 
+		// 如果 MultiTaskSlot 对应的 AllocatedSlot 和请求偏好的 slot 落在同一个 TaskManager，那么就选择这个 MultiTaskSlot
 		if (multiTaskSlotLocality != null && multiTaskSlotLocality.getLocality() == Locality.LOCAL) {
 			return multiTaskSlotLocality;
 		}
 
+
+		//这里由两种可能：
+		// 1）multiTaskSlotLocality == null，说明没有找到符合条件的 root MultiTaskSlot
+		// 2) multiTaskSlotLocality != null && multiTaskSlotLocality.getLocality() == Locality.LOCAL，不符合 Locality 偏好
+
+		//尝试从 SlotPool 中未使用的 slot 中选择
 		final SlotRequestId allocatedSlotRequestId = new SlotRequestId();
 		final SlotRequestId multiTaskSlotRequestId = new SlotRequestId();
 
 		Optional<SlotAndLocality> optionalPoolSlotAndLocality = tryAllocateFromAvailable(allocatedSlotRequestId, slotProfile);
 
 		if (optionalPoolSlotAndLocality.isPresent()) {
+			// 如果从 SlotPool 中找到了未使用的 slot
 			SlotAndLocality poolSlotAndLocality = optionalPoolSlotAndLocality.get();
+			// 如果未使用的 AllocatedSlot 符合 Locality 偏好，或者前一步没有找到可用的 MultiTaskSlot
 			if (poolSlotAndLocality.getLocality() == Locality.LOCAL || bestResolvedRootSlotWithLocality == null) {
 
+				// 基于 新分配的 AllocatedSlot 创建一个 root MultiTaskSlot
 				final PhysicalSlot allocatedSlot = poolSlotAndLocality.getSlot();
 				final SlotSharingManager.MultiTaskSlot multiTaskSlot = slotSharingManager.createRootSlot(
 					multiTaskSlotRequestId,
 					CompletableFuture.completedFuture(poolSlotAndLocality.getSlot()),
 					allocatedSlotRequestId);
 
+				// 将新创建的 root MultiTaskSlot 作为 AllocatedSlot 的 payload
 				if (allocatedSlot.tryAssignPayload(multiTaskSlot)) {
 					return SlotSharingManager.MultiTaskSlotLocality.of(multiTaskSlot, poolSlotAndLocality.getLocality());
 				} else {
@@ -489,6 +517,7 @@ public class SchedulerImpl implements Scheduler {
 		}
 
 		if (multiTaskSlotLocality != null) {
+			// 如果都不符合 Locality 偏好，或者 SlotPool 中没有可用的 slot 了
 			// prefer slot sharing group slots over unused slots
 			if (optionalPoolSlotAndLocality.isPresent()) {
 				slotPool.releaseSlot(
@@ -502,12 +531,14 @@ public class SchedulerImpl implements Scheduler {
 		SlotSharingManager.MultiTaskSlot multiTaskSlot = slotSharingManager.getUnresolvedRootSlot(groupId);
 
 		if (multiTaskSlot == null) {
+			// 如果没有，就需要 slotPool 向 RM 请求新的 slot 了
 			// it seems as if we have to request a new slot from the resource manager, this is always the last resort!!!
 			final CompletableFuture<PhysicalSlot> slotAllocationFuture = requestNewAllocatedSlot(
 				allocatedSlotRequestId,
 				slotProfile,
 				allocationTimeout);
 
+			// 请求分配后，就是同样的流程的，创建一个 root MultiTaskSlot，并作为新分配的 AllocatedSlot 的负载
 			multiTaskSlot = slotSharingManager.createRootSlot(
 				multiTaskSlotRequestId,
 				slotAllocationFuture,

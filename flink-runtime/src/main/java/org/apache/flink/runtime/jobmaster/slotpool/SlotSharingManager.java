@@ -95,12 +95,16 @@ public class SlotSharingManager {
 	/** Owner of the slots to which to return them when they are released from the outside. */
 	private final SlotOwner slotOwner;
 
+	// 所有的 TaskSlot，包括 root 和 inner 和 leaf
 	private final Map<SlotRequestId, TaskSlot> allTaskSlots;
 
 	/** Root nodes which have not been completed because the allocated slot is still pending. */
+	// root MultiTaskSlot，但底层的 Physical Slot 还没有分配好
 	private final Map<SlotRequestId, MultiTaskSlot> unresolvedRootSlots;
 
 	/** Root nodes which have been completed (the underlying allocated slot has been assigned). */
+	// root MultiTaskSlot，底层的 physical slot 也已经分配好了，按照两层 map 的方式组织，
+	// 可以通过已分配的 Physical slot 所在的TaskManager 的位置进行查找
 	private final Map<TaskManagerLocation, Map<AllocationID, MultiTaskSlot>> resolvedRootSlots;
 
 	SlotSharingManager(
@@ -197,6 +201,7 @@ public class SlotSharingManager {
 
 	@Nonnull
 	public Collection<SlotSelectionStrategy.SlotInfoAndResources> listResolvedRootSlotInfo(@Nullable AbstractID groupId) {
+		// 列出已经分配了physical slot 的root MultiTaskSlot，但要求 MultiTaskSlot 不包含指定的 groupId
 		return resolvedRootSlots
 			.values()
 			.stream()
@@ -253,6 +258,7 @@ public class SlotSharingManager {
 
 	@Nullable
 	public MultiTaskSlot getResolvedRootSlot(@Nonnull SlotInfo slotInfo) {
+		// 根据 SlotInfo（TasManagerLocation 和 AllocationId）找到 MultiTaskSlot
 		Map<AllocationID, MultiTaskSlot> forLocationEntry = resolvedRootSlots.get(slotInfo.getTaskManagerLocation());
 		return forLocationEntry != null ? forLocationEntry.get(slotInfo.getAllocationId()) : null;
 	}
@@ -266,6 +272,7 @@ public class SlotSharingManager {
 	 */
 	@Nullable
 	MultiTaskSlot getUnresolvedRootSlot(AbstractID groupId) {
+		// 找到一个不包含指定 groupId 的 root MultiTaskSlot
 		return unresolvedRootSlots.values().stream()
 			.filter(validMultiTaskSlotAndDoesNotContain(groupId))
 			.findFirst()

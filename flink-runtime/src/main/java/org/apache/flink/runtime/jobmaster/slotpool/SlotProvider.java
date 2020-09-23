@@ -44,6 +44,7 @@ public interface SlotProvider {
 
 	/**
 	 * Allocating slot with specific requirement.
+	 * 申请 slot，返回值一个 LogicalSlot 的 future
 	 *
 	 * @param slotRequestId identifying the slot request
 	 * @param scheduledUnit The task to allocate the slot for
