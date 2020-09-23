@@ -92,41 +92,67 @@ public class SlotPoolImpl implements SlotPool {
 
 	protected final Logger log = LoggerFactory.getLogger(getClass());
 
-	/** The interval (in milliseconds) in which the SlotPool writes its slot distribution on debug level. */
+	/**
+	 * The interval (in milliseconds) in which the SlotPool writes its slot distribution on debug level.
+	 */
 	private static final long STATUS_LOG_INTERVAL_MS = 60_000;
 
 	private final JobID jobId;
 
-	/** All registered TaskManagers, slots will be accepted and used only if the resource is registered. */
+	/**
+	 * All registered TaskManagers, slots will be accepted and used only if the resource is registered.
+	 */
 	private final HashSet<ResourceID> registeredTaskManagers;
 
-	/** The book-keeping of all allocated slots. */
+	/**
+	 * The book-keeping of all allocated slots.
+	 */
+	// 所有分配给当前 JobManager 的 slots
 	private final AllocatedSlots allocatedSlots;
 
-	/** The book-keeping of all available slots. */
+	/**
+	 * The book-keeping of all available slots.
+	 */
+	// 所有可用的 slots（已经分配给该 JobManager，但还没有装载 payload）
 	private final AvailableSlots availableSlots;
 
-	/** All pending requests waiting for slots. */
+	/**
+	 * All pending requests waiting for slots.
+	 */
+	// 所有处于等待状态的slot request（已经发送请求给 ResourceManager）
 	private final DualKeyLinkedMap<SlotRequestId, AllocationID, PendingRequest> pendingRequests;
 
-	/** The requests that are waiting for the resource manager to be connected. */
+	/**
+	 * The requests that are waiting for the resource manager to be connected.
+	 */
+	// 处于等待状态的 slot request （还没有发送请求给 ResourceManager，此时没有和 ResourceManager 建立连接）
 	private final LinkedHashMap<SlotRequestId, PendingRequest> waitingForResourceManager;
 
-	/** Timeout for external request calls (e.g. to the ResourceManager or the TaskExecutor). */
+	/**
+	 * Timeout for external request calls (e.g. to the ResourceManager or the TaskExecutor).
+	 */
 	private final Time rpcTimeout;
 
-	/** Timeout for releasing idle slots. */
+	/**
+	 * Timeout for releasing idle slots.
+	 */
 	private final Time idleSlotTimeout;
 
-	/** Timeout for batch slot requests. */
+	/**
+	 * Timeout for batch slot requests.
+	 */
 	private final Time batchSlotTimeout;
 
 	private final Clock clock;
 
-	/** the fencing token of the job manager. */
+	/**
+	 * the fencing token of the job manager.
+	 */
 	private JobMasterId jobMasterId;
 
-	/** The gateway to communicate with resource manager. */
+	/**
+	 * The gateway to communicate with resource manager.
+	 */
 	@Nullable
 	private ResourceManagerGateway resourceManagerGateway;
 
@@ -137,11 +163,11 @@ public class SlotPoolImpl implements SlotPool {
 	// ------------------------------------------------------------------------
 
 	public SlotPoolImpl(
-			JobID jobId,
-			Clock clock,
-			Time rpcTimeout,
-			Time idleSlotTimeout,
-			Time batchSlotTimeout) {
+		JobID jobId,
+		Clock clock,
+		Time rpcTimeout,
+		Time idleSlotTimeout,
+		Time batchSlotTimeout) {
 
 		this.jobId = checkNotNull(jobId);
 		this.clock = checkNotNull(clock);
@@ -197,8 +223,8 @@ public class SlotPoolImpl implements SlotPool {
 	/**
 	 * Start the slot pool to accept RPC calls.
 	 *
-	 * @param jobMasterId The necessary leader id for running the job.
-	 * @param newJobManagerAddress for the slot requests which are sent to the resource manager
+	 * @param jobMasterId                 The necessary leader id for running the job.
+	 * @param newJobManagerAddress        for the slot requests which are sent to the resource manager
 	 * @param componentMainThreadExecutor The main thread executor for the job master's main thread.
 	 */
 	public void start(
@@ -304,25 +330,35 @@ public class SlotPoolImpl implements SlotPool {
 	private CompletableFuture<AllocatedSlot> requestNewAllocatedSlotInternal(PendingRequest pendingRequest) {
 
 		if (resourceManagerGateway == null) {
+			// 如果当前没有和 ResourceManager 建立连接，则需要等待 ResourceManager 建立连接
 			stashRequestWaitingForResourceManager(pendingRequest);
 		} else {
+			// 当前已经和 RM 建立了连接，向 RM 申请slot
 			requestSlotFromResourceManager(resourceManagerGateway, pendingRequest);
 		}
 
 		return pendingRequest.getAllocatedSlotFuture();
 	}
 
+	/**
+	 * 当前已经和 RM 建立了连接，向 RM 申请slot
+	 *
+	 * @param resourceManagerGateway
+	 * @param pendingRequest
+	 */
 	private void requestSlotFromResourceManager(
-			final ResourceManagerGateway resourceManagerGateway,
-			final PendingRequest pendingRequest) {
+		final ResourceManagerGateway resourceManagerGateway,
+		final PendingRequest pendingRequest) {
 
 		checkNotNull(resourceManagerGateway);
 		checkNotNull(pendingRequest);
 
 		log.info("Requesting new slot [{}] and profile {} from resource manager.", pendingRequest.getSlotRequestId(), pendingRequest.getResourceProfile());
 
+		// 生成一个 AllocationID，后面分配的 slot 通过 AllocationID 区分
 		final AllocationID allocationId = new AllocationID();
 
+		// 添加到等待处理的请求中
 		pendingRequests.put(pendingRequest.getSlotRequestId(), allocationId, pendingRequest);
 
 		pendingRequest.getAllocatedSlotFuture().whenComplete(
@@ -334,6 +370,7 @@ public class SlotPoolImpl implements SlotPool {
 				}
 			});
 
+		// 通过 RPC 调用向 RM 请求 slot，RM 的处理流程在前面已经介绍过
 		CompletableFuture<Acknowledge> rmResponse = resourceManagerGateway.requestSlot(
 			jobMasterId,
 			new SlotRequest(jobId, allocationId, pendingRequest.getResourceProfile(), jobManagerAddress),
@@ -367,15 +404,21 @@ public class SlotPoolImpl implements SlotPool {
 		}
 	}
 
+	/**
+	 * 如果当前没有和 RM 建立连接，则需要等待 RM 建立连接，加入 waitingForResourceManager
+	 * 一旦和 RM 建立连接，就会向 RM 发送请求
+	 *
+	 * @param pendingRequest
+	 */
 	private void stashRequestWaitingForResourceManager(final PendingRequest pendingRequest) {
 
 		log.info("Cannot serve slot request, no ResourceManager connected. " +
-				"Adding as pending request [{}]",  pendingRequest.getSlotRequestId());
+			"Adding as pending request [{}]", pendingRequest.getSlotRequestId());
 
 		waitingForResourceManager.put(pendingRequest.getSlotRequestId(), pendingRequest);
 	}
 
-	private boolean isBatchRequestAndFailureCanBeIgnored(PendingRequest request, Throwable failure){
+	private boolean isBatchRequestAndFailureCanBeIgnored(PendingRequest request, Throwable failure) {
 		return request.isBatchRequest &&
 			!ExceptionUtils.findThrowable(failure, UnfulfillableSlotRequestException.class).isPresent();
 	}
@@ -393,6 +436,13 @@ public class SlotPoolImpl implements SlotPool {
 		releaseSingleSlot(slotRequestId, cause);
 	}
 
+	/**
+	 * 将 allocationID 关联的 slot 分配给 slotRequestId 对应的请求
+	 *
+	 * @param slotRequestId identifying the requested slot
+	 * @param allocationID  the allocation id of the requested available slot
+	 * @return
+	 */
 	@Override
 	public Optional<PhysicalSlot> allocateAvailableSlot(
 		@Nonnull SlotRequestId slotRequestId,
@@ -400,8 +450,10 @@ public class SlotPoolImpl implements SlotPool {
 
 		componentMainThreadExecutor.assertRunningInMainThread();
 
+		// 从 availableSlots 中移除
 		AllocatedSlot allocatedSlot = availableSlots.tryRemove(allocationID);
 		if (allocatedSlot != null) {
+			// 加入已分配的映射关系中
 			allocatedSlots.add(slotRequestId, allocatedSlot);
 			return Optional.of(allocatedSlot);
 		} else {
@@ -409,15 +461,24 @@ public class SlotPoolImpl implements SlotPool {
 		}
 	}
 
+	/**
+	 * 向 ResourceManager 申请信的 slot
+	 *
+	 * @param slotRequestId   identifying the requested slot
+	 * @param resourceProfile resource profile that specifies the resource requirements for the requested slot
+	 * @param timeout         timeout for the allocation procedure
+	 * @return
+	 */
 	@Nonnull
 	@Override
 	public CompletableFuture<PhysicalSlot> requestNewAllocatedSlot(
-			@Nonnull SlotRequestId slotRequestId,
-			@Nonnull ResourceProfile resourceProfile,
-			Time timeout) {
+		@Nonnull SlotRequestId slotRequestId,
+		@Nonnull ResourceProfile resourceProfile,
+		Time timeout) {
 
 		componentMainThreadExecutor.assertRunningInMainThread();
 
+		// 构建一个 PendingRequest
 		final PendingRequest pendingRequest = PendingRequest.createStreamingRequest(slotRequestId, resourceProfile);
 
 		// register request timeout
@@ -430,6 +491,7 @@ public class SlotPoolImpl implements SlotPool {
 			.whenComplete(
 				(AllocatedSlot ignored, Throwable throwable) -> {
 					if (throwable instanceof TimeoutException) {
+						// 超时处理
 						timeoutPendingSlotRequest(slotRequestId);
 					}
 				});
@@ -452,6 +514,11 @@ public class SlotPoolImpl implements SlotPool {
 			.thenApply(Function.identity());
 	}
 
+	/**
+	 * 列出当前可用的slot
+	 *
+	 * @return
+	 */
 	@Override
 	@Nonnull
 	public Collection<SlotInfoWithUtilization> getAvailableSlotsInformation() {
@@ -564,14 +631,22 @@ public class SlotPoolImpl implements SlotPool {
 		return null;
 	}
 
+	/**
+	 * 向 SlotPool 分配 slot，返回已经被接受的 slot 集合。没有被接受的 slot，RM 可以分配给其他 Job。
+	 *
+	 * @param taskManagerLocation from which the slot offers originate
+	 * @param taskManagerGateway  to talk to the slot offerer
+	 * @param offers              slot offers which are offered to the {@link SlotPool}
+	 * @return
+	 */
 	@Override
 	public Collection<SlotOffer> offerSlots(
-			TaskManagerLocation taskManagerLocation,
-			TaskManagerGateway taskManagerGateway,
-			Collection<SlotOffer> offers) {
+		TaskManagerLocation taskManagerLocation,
+		TaskManagerGateway taskManagerGateway,
+		Collection<SlotOffer> offers) {
 
 		ArrayList<SlotOffer> result = new ArrayList<>(offers.size());
-
+		// SlotPool 可以确定是否接受每一个 slot
 		for (SlotOffer offer : offers) {
 			if (offerSlot(
 				taskManagerLocation,
@@ -592,14 +667,14 @@ public class SlotPoolImpl implements SlotPool {
 	 * request waiting for this slot (maybe fulfilled by some other returned slot).
 	 *
 	 * @param taskManagerLocation location from where the offer comes from
-	 * @param taskManagerGateway TaskManager gateway
-	 * @param slotOffer the offered slot
+	 * @param taskManagerGateway  TaskManager gateway
+	 * @param slotOffer           the offered slot
 	 * @return True if we accept the offering
 	 */
 	boolean offerSlot(
-			final TaskManagerLocation taskManagerLocation,
-			final TaskManagerGateway taskManagerGateway,
-			final SlotOffer slotOffer) {
+		final TaskManagerLocation taskManagerLocation,
+		final TaskManagerGateway taskManagerGateway,
+		final SlotOffer slotOffer) {
 
 		componentMainThreadExecutor.assertRunningInMainThread();
 
@@ -609,11 +684,12 @@ public class SlotPoolImpl implements SlotPool {
 
 		if (!registeredTaskManagers.contains(resourceID)) {
 			log.debug("Received outdated slot offering [{}] from unregistered TaskManager: {}",
-					slotOffer.getAllocationId(), taskManagerLocation);
+				slotOffer.getAllocationId(), taskManagerLocation);
 			return false;
 		}
 
 		// check whether we have already using this slot
+		// 如果当前 slot 关联的 AllocationID 已经在 SlotPool 中出现
 		AllocatedSlot existingSlot;
 		if ((existingSlot = allocatedSlots.get(allocationID)) != null ||
 			(existingSlot = availableSlots.get(allocationID)) != null) {
@@ -629,18 +705,22 @@ public class SlotPoolImpl implements SlotPool {
 			final SlotID newSlotId = new SlotID(taskManagerLocation.getResourceID(), slotOffer.getSlotIndex());
 
 			if (existingSlotId.equals(newSlotId)) {
+				// 这个 slot 在之前已经被 SlotPool 接受了，相当于 TaskExecutor 发送了一个重复的 offer
 				log.info("Received repeated offer for slot [{}]. Ignoring.", allocationID);
 
 				// return true here so that the sender will get a positive acknowledgement to the retry
 				// and mark the offering as a success
 				return true;
 			} else {
+				// 已经有一个其他的 AllocatedSlot 和 这个 AllocationID 关联了，因此不能接受当前的这个 slot
 				// the allocation has been fulfilled by another slot, reject the offer so the task executor
 				// will offer the slot to the resource manager
 				return false;
 			}
 		}
 
+		// 这个 slot 关联的 AllocationID 此前没有出现过
+		// 新建一个 AllocatedSlot 对象，表示新分配的 slot
 		final AllocatedSlot allocatedSlot = new AllocatedSlot(
 			allocationID,
 			taskManagerLocation,
@@ -649,23 +729,29 @@ public class SlotPoolImpl implements SlotPool {
 			taskManagerGateway);
 
 		// check whether we have request waiting for this slot
+		// 检查是否有一个 request 和 这个 AllocationID 关联
 		PendingRequest pendingRequest = pendingRequests.removeKeyB(allocationID);
 		if (pendingRequest != null) {
 			// we were waiting for this!
+			// 有一个pending request 正在等待这个 slot
 			allocatedSlots.add(pendingRequest.getSlotRequestId(), allocatedSlot);
 
+			// 尝试去完成那个等待的请求
 			if (!pendingRequest.getAllocatedSlotFuture().complete(allocatedSlot)) {
 				// we could not complete the pending slot future --> try to fulfill another pending request
+				// 失败了
 				allocatedSlots.remove(pendingRequest.getSlotRequestId());
+				// 尝试去满足其他在等待的请求
 				tryFulfillSlotRequestOrMakeAvailable(allocatedSlot);
 			} else {
 				log.debug("Fulfilled slot request [{}] with allocated slot [{}].", pendingRequest.getSlotRequestId(), allocationID);
 			}
-		}
-		else {
+		} else {
+			// 没有请求在等待这个slot，可能请求已经被满足了
 			// we were actually not waiting for this:
 			//   - could be that this request had been fulfilled
 			//   - we are receiving the slots from TaskManagers after becoming leaders
+			// 尝试去满足其他在等待的请求
 			tryFulfillSlotRequestOrMakeAvailable(allocatedSlot);
 		}
 
@@ -690,7 +776,7 @@ public class SlotPoolImpl implements SlotPool {
 	 * and decided to take it back.
 	 *
 	 * @param allocationID Represents the allocation which should be failed
-	 * @param cause The cause of the failure
+	 * @param cause        The cause of the failure
 	 * @return Optional task executor if it has no more slots registered
 	 */
 	@Override
@@ -708,8 +794,7 @@ public class SlotPoolImpl implements SlotPool {
 				failPendingRequest(pendingRequest, cause);
 			}
 			return Optional.empty();
-		}
-		else {
+		} else {
 			return tryFailingAllocatedSlot(allocationID, cause);
 		}
 
@@ -766,7 +851,7 @@ public class SlotPoolImpl implements SlotPool {
 	 * when we find some TaskManager becomes "dead" or "abnormal", and we decide to not using slots from it anymore.
 	 *
 	 * @param resourceId The id of the TaskManager
-	 * @param cause for the releasing of the TaskManager
+	 * @param cause      for the releasing of the TaskManager
 	 */
 	@Override
 	public boolean releaseTaskManager(final ResourceID resourceId, final Exception cause) {
@@ -787,10 +872,10 @@ public class SlotPoolImpl implements SlotPool {
 		final Set<AllocatedSlot> allocatedSlotsForTaskManager = allocatedSlots.getSlotsForTaskManager(taskManagerId);
 
 		List<AllocatedSlotInfo> allocatedSlotInfos = new ArrayList<>(
-				availableSlotsForTaskManager.size() + allocatedSlotsForTaskManager.size());
+			availableSlotsForTaskManager.size() + allocatedSlotsForTaskManager.size());
 		for (AllocatedSlot allocatedSlot : Iterables.concat(availableSlotsForTaskManager, allocatedSlotsForTaskManager)) {
 			allocatedSlotInfos.add(
-					new AllocatedSlotInfo(allocatedSlot.getPhysicalSlotNumber(), allocatedSlot.getAllocationId()));
+				new AllocatedSlotInfo(allocatedSlot.getPhysicalSlotNumber(), allocatedSlot.getAllocationId()));
 		}
 		return new AllocatedSlotReport(jobId, allocatedSlotInfos);
 	}
@@ -861,7 +946,7 @@ public class SlotPoolImpl implements SlotPool {
 						if (throwable != null) {
 							// The slot status will be synced to task manager in next heartbeat.
 							log.debug("Releasing slot [{}] of registered TaskExecutor {} failed. Discarding slot.",
-										allocationID, expiredSlot.getTaskManagerId(), throwable);
+								allocationID, expiredSlot.getTaskManagerId(), throwable);
 						}
 					});
 			}
@@ -960,8 +1045,8 @@ public class SlotPoolImpl implements SlotPool {
 			builder.append("connected to ").append(resourceManagerGateway.getAddress()).append('\n');
 		} else {
 			builder.append("unconnected and waiting for ResourceManager ")
-					.append(waitingForResourceManager)
-					.append('\n');
+				.append(waitingForResourceManager)
+				.append('\n');
 		}
 
 		builder.append("\tregistered TaskManagers: ").append(registeredTaskManagers).append('\n');
@@ -1015,10 +1100,14 @@ public class SlotPoolImpl implements SlotPool {
 	 */
 	static class AllocatedSlots {
 
-		/** All allocated slots organized by TaskManager's id. */
+		/**
+		 * All allocated slots organized by TaskManager's id.
+		 */
 		private final Map<ResourceID, Set<AllocatedSlot>> allocatedSlotsByTaskManager;
 
-		/** All allocated slots organized by AllocationID. */
+		/**
+		 * All allocated slots organized by AllocationID.
+		 */
 		private final DualKeyLinkedMap<AllocationID, SlotRequestId, AllocatedSlot> allocatedSlotsById;
 
 		AllocatedSlots() {
@@ -1126,8 +1215,7 @@ public class SlotPoolImpl implements SlotPool {
 					allocatedSlotsById.removeKeyA(allocatedSlot.getAllocationId());
 				}
 				return slotsForTaskManager;
-			}
-			else {
+			} else {
 				return Collections.emptySet();
 			}
 		}
@@ -1172,13 +1260,19 @@ public class SlotPoolImpl implements SlotPool {
 	 */
 	protected static class AvailableSlots {
 
-		/** All available slots organized by TaskManager. */
+		/**
+		 * All available slots organized by TaskManager.
+		 */
 		private final HashMap<ResourceID, Set<AllocatedSlot>> availableSlotsByTaskManager;
 
-		/** All available slots organized by host. */
+		/**
+		 * All available slots organized by host.
+		 */
 		private final HashMap<String, Set<AllocatedSlot>> availableSlotsByHost;
 
-		/** The available slots, with the time when they were inserted. */
+		/**
+		 * The available slots, with the time when they were inserted.
+		 */
 		private final HashMap<AllocationID, SlotAndTimestamp> availableSlots;
 
 		AvailableSlots() {
@@ -1196,7 +1290,7 @@ public class SlotPoolImpl implements SlotPool {
 			checkNotNull(slot);
 
 			SlotAndTimestamp previous = availableSlots.put(
-					slot.getAllocationId(), new SlotAndTimestamp(slot, timestamp));
+				slot.getAllocationId(), new SlotAndTimestamp(slot, timestamp));
 
 			if (previous == null) {
 				final ResourceID resourceID = slot.getTaskManagerLocation().getResourceID();
@@ -1209,8 +1303,7 @@ public class SlotPoolImpl implements SlotPool {
 				Set<AllocatedSlot> slotsForHost =
 					availableSlotsByHost.computeIfAbsent(host, k -> new HashSet<>());
 				slotsForHost.add(slot);
-			}
-			else {
+			} else {
 				throw new IllegalStateException("slot already contained");
 			}
 		}
@@ -1282,8 +1375,7 @@ public class SlotPoolImpl implements SlotPool {
 				}
 
 				return slot;
-			}
-			else {
+			} else {
 				return null;
 			}
 		}
@@ -1351,9 +1443,9 @@ public class SlotPoolImpl implements SlotPool {
 		private long unfillableSince;
 
 		private PendingRequest(
-				SlotRequestId slotRequestId,
-				ResourceProfile resourceProfile,
-				boolean isBatchRequest) {
+			SlotRequestId slotRequestId,
+			ResourceProfile resourceProfile,
+			boolean isBatchRequest) {
 			this(slotRequestId, resourceProfile, isBatchRequest, new CompletableFuture<>());
 		}
 
@@ -1396,10 +1488,10 @@ public class SlotPoolImpl implements SlotPool {
 		@Override
 		public String toString() {
 			return "PendingRequest{" +
-					"slotRequestId=" + slotRequestId +
-					", resourceProfile=" + resourceProfile +
-					", allocatedSlotFuture=" + allocatedSlotFuture +
-					'}';
+				"slotRequestId=" + slotRequestId +
+				", resourceProfile=" + resourceProfile +
+				", allocatedSlotFuture=" + allocatedSlotFuture +
+				'}';
 		}
 
 		void markFulfillable() {
