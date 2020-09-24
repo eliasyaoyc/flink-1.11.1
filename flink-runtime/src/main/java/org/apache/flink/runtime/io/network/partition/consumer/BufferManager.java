@@ -342,13 +342,17 @@ public class BufferManager implements BufferListener, BufferRecycler {
 		final ArrayDeque<Buffer> exclusiveBuffers;
 
 		AvailableBufferQueue() {
+			// 独占的
 			this.exclusiveBuffers = new ArrayDeque<>();
+			// 流动的
 			this.floatingBuffers = new ArrayDeque<>();
 		}
 
 		/**
 		 * Adds an exclusive buffer (back) into the queue and recycles one floating buffer if the
 		 * number of available buffers in queue is more than the required amount.
+		 * 添加一个独占的 buffer，如果当前可用的buffer 总量超出了要求的数量，则向本地缓冲池归还一个流动的 buffer
+		 * 返回值是新增的 buffer 数量
 		 *
 		 * @param buffer             The exclusive buffer to add
 		 * @param numRequiredBuffers The number of required buffers
@@ -360,12 +364,14 @@ public class BufferManager implements BufferListener, BufferRecycler {
 				Buffer floatingBuffer = floatingBuffers.poll();
 				if (floatingBuffer != null) {
 					floatingBuffer.recycleBuffer();
+					// 加一个 归还一个，等于没加
 					return 0;
 				}
 			}
 			return 1;
 		}
 
+		// 添加一个流动的 buffer
 		void addFloatingBuffer(Buffer buffer) {
 			floatingBuffers.add(buffer);
 		}

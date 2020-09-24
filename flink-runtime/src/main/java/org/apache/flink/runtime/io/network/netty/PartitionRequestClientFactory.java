@@ -62,6 +62,7 @@ class PartitionRequestClientFactory {
 
 			if (entry != null) {
 				// Existing channel or connecting channel
+				// 连接已经建立
 				if (entry instanceof NettyPartitionRequestClient) {
 					client = (NettyPartitionRequestClient) entry;
 				}
@@ -77,10 +78,12 @@ class PartitionRequestClientFactory {
 				// We create a "connecting future" and atomically add it to the map.
 				// Only the thread that really added it establishes the channel.
 				// The others need to wait on that original establisher's future.
+				// 连接创建成功后回调 handInChannel 方法
 				ConnectingChannel connectingChannel = new ConnectingChannel(connectionId, this);
 				Object old = clients.putIfAbsent(connectionId, connectingChannel);
 
 				if (old == null) {
+					// 连接到 NettyServer
 					nettyClient.connect(connectionId.getAddress()).addListener(connectingChannel);
 
 					client = connectingChannel.waitForChannel();

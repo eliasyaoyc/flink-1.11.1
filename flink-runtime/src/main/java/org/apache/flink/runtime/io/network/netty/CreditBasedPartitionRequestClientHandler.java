@@ -179,7 +179,9 @@ class CreditBasedPartitionRequestClientHandler extends ChannelInboundHandlerAdap
 
 	@Override
 	public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+		// 从 netty channel 中接受到数据
 		try {
+			// 解析消息
 			decodeMsg(msg);
 		} catch (Throwable t) {
 			notifyAllChannelsOfErrorAndClose(t);
@@ -255,18 +257,22 @@ class CreditBasedPartitionRequestClientHandler extends ChannelInboundHandlerAdap
 
 		// ---- Buffer --------------------------------------------------------
 		if (msgClazz == NettyMessage.BufferResponse.class) {
+			// 正常数据
 			NettyMessage.BufferResponse bufferOrEvent = (NettyMessage.BufferResponse) msg;
 
+			// 根据 ID 定位到对应的 RemoteInputChannel
 			RemoteInputChannel inputChannel = inputChannels.get(bufferOrEvent.receiverId);
 			if (inputChannel == null || inputChannel.isReleased()) {
+				// 如果没有对应的 RemoteInputChannel
 				bufferOrEvent.releaseBuffer();
-
+				// 取消对给定 receiverId 的订阅
 				cancelRequestFor(bufferOrEvent.receiverId);
 
 				return;
 			}
 
 			try {
+				// 解析消息， 是buffer 还是 event
 				decodeBufferOrEvent(inputChannel, bufferOrEvent);
 			} catch (Throwable t) {
 				inputChannel.onError(t);

@@ -123,6 +123,7 @@ public class RemoteInputChannel extends InputChannel {
 	 * Assigns exclusive buffers to this input channel, and this method should be called only once
 	 * after this input channel is created.
 	 */
+	// 分配独占的 buffer
 	void assignExclusiveSegments() throws IOException {
 		checkState(initialCredit == 0, "Bug in input channel setup logic: exclusive buffers have " +
 			"already been set for this input channel.");
@@ -140,6 +141,8 @@ public class RemoteInputChannel extends InputChannel {
 	@VisibleForTesting
 	@Override
 	public void requestSubpartition(int subpartitionIndex) throws IOException, InterruptedException {
+		// Remote 需要网络通信，使用 netty 建立网络
+		// 通过 ConnectionManager 来建立连接：创建 PartitionRequestClient，通过 PartitionRequestClient 发起请求
 		if (partitionRequestClient == null) {
 			// Create a client and request the partition
 			try {
@@ -149,6 +152,7 @@ public class RemoteInputChannel extends InputChannel {
 				throw new PartitionConnectionException(partitionId, e);
 			}
 
+			// 请求分区，通过netty 发起请求
 			partitionRequestClient.requestSubpartition(partitionId, subpartitionIndex, this, 0);
 		}
 	}
@@ -423,6 +427,9 @@ public class RemoteInputChannel extends InputChannel {
 	 *
 	 * @param backlog The number of unsent buffers in the producer's sub partition.
 	 */
+	//backlog 是发送端的堆积 的 buffer 数量，
+	//如果 bufferQueue 中 buffer 的数量不足，就去须从 LocalBufferPool 中请求 floating buffer
+	//在请求了新的 buffer 后，通知生产者有 credit 可用
 	void onSenderBacklog(int backlog) throws IOException {
 		int numRequestedBuffers = bufferManager.requestFloatingBuffers(backlog + initialCredit);
 		if (numRequestedBuffers > 0 && unannouncedCredit.getAndAdd(numRequestedBuffers) == 0) {
@@ -430,10 +437,18 @@ public class RemoteInputChannel extends InputChannel {
 		}
 	}
 
+	/**
+	 * 接受到远程 ResultSubpartition 发送的 buffer
+	 * @param buffer
+	 * @param sequenceNumber
+	 * @param backlog
+	 * @throws IOException
+	 */
 	public void onBuffer(Buffer buffer, int sequenceNumber, int backlog) throws IOException {
 		boolean recycleBuffer = true;
 
 		try {
+			// 序号需要匹配
 			if (expectedSequenceNumber != sequenceNumber) {
 				onError(new BufferReorderingException(expectedSequenceNumber, sequenceNumber));
 				return;
@@ -451,6 +466,7 @@ public class RemoteInputChannel extends InputChannel {
 					return;
 				}
 
+				// 加入 receivedBuffers 队列中
 				wasEmpty = receivedBuffers.isEmpty();
 				receivedBuffers.add(buffer);
 
@@ -466,10 +482,12 @@ public class RemoteInputChannel extends InputChannel {
 			++expectedSequenceNumber;
 
 			if (wasEmpty) {
+				// 通知 InputGate 当前 channel 有新数据
 				notifyChannelNonEmpty();
 			}
 
 			if (backlog >= 0) {
+				// 根据客户端的积压申请 float buffer
 				onSenderBacklog(backlog);
 			}
 

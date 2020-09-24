@@ -74,6 +74,7 @@ public class NettyProtocol {
 	 * @return channel handlers
 	 */
 	public ChannelHandler[] getServerChannelHandlers() {
+		// netty server  端的  ChannelHandler
 		PartitionRequestQueue queueOfPartitionQueues = new PartitionRequestQueue();
 		PartitionRequestServerHandler serverHandler = new PartitionRequestServerHandler(
 			partitionProvider,
@@ -121,6 +122,7 @@ public class NettyProtocol {
 	 * @return channel handlers
 	 */
 	public ChannelHandler[] getClientChannelHandlers() {
+		// netty client 端的  ChannelHandler
 		NetworkClientHandler networkClientHandler = new CreditBasedPartitionRequestClientHandler();
 
 		return new ChannelHandler[]{

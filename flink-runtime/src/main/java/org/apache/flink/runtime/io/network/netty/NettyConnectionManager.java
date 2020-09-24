@@ -56,14 +56,18 @@ public class NettyConnectionManager implements ConnectionManager {
 
 	@Override
 	public int start() throws IOException {
+		// 初始化 Netty Client
 		client.init(nettyProtocol, bufferPool);
 
+		// 初始化并启动 Netty Server
 		return server.init(nettyProtocol, bufferPool);
 	}
 
 	@Override
 	public PartitionRequestClient createPartitionRequestClient(ConnectionID connectionId)
 			throws IOException, InterruptedException {
+		// 这里会建立和其他 Task 的 Server 的连接
+		// 返回的 PartitionRequestClient 中封装了 netty channel 和 channel handler
 		return partitionRequestClientFactory.createPartitionRequestClient(connectionId);
 	}
 

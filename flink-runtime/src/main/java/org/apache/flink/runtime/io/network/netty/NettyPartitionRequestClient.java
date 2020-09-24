@@ -107,8 +107,11 @@ public class NettyPartitionRequestClient implements PartitionRequestClient {
 		LOG.debug("Requesting subpartition {} of partition {} with {} ms delay.",
 				subpartitionIndex, partitionId, delayMs);
 
+		//向 NetworkClientHandler 注册当前 RemoteInputChannel
+		//单个 Task 所有的 RemoteInputChannel 的数据传输都通过这个 PartitionRequestClient 处理
 		clientHandler.addInputChannel(inputChannel);
 
+		//PartitionRequest封装了请求的 sub-partition 的信息，当前 input channel 的 ID，以及初始 credit
 		final PartitionRequest request = new PartitionRequest(
 				partitionId, subpartitionIndex, inputChannel.getInputChannelId(), inputChannel.getInitialCredit());
 
@@ -116,6 +119,7 @@ public class NettyPartitionRequestClient implements PartitionRequestClient {
 			@Override
 			public void operationComplete(ChannelFuture future) throws Exception {
 				if (!future.isSuccess()) {
+					//如果请求发送失败，要移除当前的 inputChannel
 					clientHandler.removeInputChannel(inputChannel);
 					SocketAddress remoteAddr = future.channel().remoteAddress();
 					inputChannel.onError(
@@ -127,6 +131,7 @@ public class NettyPartitionRequestClient implements PartitionRequestClient {
 			}
 		};
 
+		//通过 netty 发送请求
 		if (delayMs == 0) {
 			ChannelFuture f = tcpChannel.writeAndFlush(request);
 			f.addListener(listener);

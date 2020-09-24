@@ -55,10 +55,14 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 
 	private final ChannelFutureListener writeListener = new WriteAndFlushNextMessageIfPossibleListener();
 
-	/** The readers which are already enqueued available for transferring data. */
+	/**
+	 * The readers which are already enqueued available for transferring data.
+	 */
 	private final ArrayDeque<NetworkSequenceViewReader> availableReaders = new ArrayDeque<>();
 
-	/** All the readers created for the consumers' partition requests. */
+	/**
+	 * All the readers created for the consumers' partition requests.
+	 */
 	private final ConcurrentMap<InputChannelID, NetworkSequenceViewReader> allReaders = new ConcurrentHashMap<>();
 
 	private boolean fatalError;
@@ -74,6 +78,7 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 		super.channelRegistered(ctx);
 	}
 
+	//通知 NetworkSequenceViewReader 有数据可读取
 	void notifyReaderNonEmpty(final NetworkSequenceViewReader reader) {
 		// The notification might come from the same thread. For the initial writes this
 		// might happen before the reader has set its reference to the view, because
@@ -84,6 +89,7 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 		// TODO This could potentially have a bad performance impact as in the
 		// worst case (network consumes faster than the producer) each buffer
 		// will trigger a separate event loop task being scheduled.
+		// 触发一次用户自定义的事件
 		ctx.executor().execute(() -> ctx.pipeline().fireUserEventTriggered(reader));
 	}
 
@@ -96,6 +102,7 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 	 */
 	private void enqueueAvailableReader(final NetworkSequenceViewReader reader) throws Exception {
 		if (reader.isRegisteredAsAvailable() || !reader.isAvailable()) {
+			//已经被注册到队列中，或者暂时没有 buffer 或没有 credit 可用
 			return;
 		}
 		// Queue an available reader for consumption. If the queue is empty,
@@ -105,6 +112,7 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 		registerAvailableReader(reader);
 
 		if (triggerWrite) {
+			//如果这是队列中第一个元素，调用 writeAndFlushNextMessageIfPossible 发送数据
 			writeAndFlushNextMessageIfPossible(ctx.channel());
 		}
 	}
@@ -121,6 +129,7 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 		return availableReaders;
 	}
 
+	//添加新的 NetworkSequenceViewReader
 	public void notifyReaderCreated(final NetworkSequenceViewReader reader) {
 		allReaders.put(reader.getReceiverId(), reader);
 	}
@@ -145,11 +154,11 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 	 * checkpoint and enqueues the corresponding reader for this consumer (if not enqueued yet).
 	 *
 	 * @param receiverId The input channel id to identify the consumer.
-	 * @param operation The operation to be performed (add credit or resume data consumption).
+	 * @param operation  The operation to be performed (add credit or resume data consumption).
 	 */
 	void addCreditOrResumeConsumption(
-			InputChannelID receiverId,
-			Consumer<NetworkSequenceViewReader> operation) throws Exception {
+		InputChannelID receiverId,
+		Consumer<NetworkSequenceViewReader> operation) throws Exception {
 		if (fatalError) {
 			return;
 		}
@@ -164,15 +173,18 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 		}
 	}
 
+	// 自定义用户事件的处理
 	@Override
 	public void userEventTriggered(ChannelHandlerContext ctx, Object msg) throws Exception {
 		// The user event triggered event loop callback is used for thread-safe
 		// hand over of reader queues and cancelled producers.
 
 		if (msg instanceof NetworkSequenceViewReader) {
+			// NetworkSequenceViewReader 有数据可读取，加入队列中
 			enqueueAvailableReader((NetworkSequenceViewReader) msg);
 		} else if (msg.getClass() == InputChannelID.class) {
 			// Release partition view that get a cancel request.
+			// 对应的 RemoteInputChannel 请求取消消费
 			InputChannelID toCancel = (InputChannelID) msg;
 
 			// remove reader from queue of available readers
@@ -190,11 +202,13 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 
 	@Override
 	public void channelWritabilityChanged(ChannelHandlerContext ctx) throws Exception {
+		//当前channel的读写状态发生变化
 		writeAndFlushNextMessageIfPossible(ctx.channel());
 	}
 
 	private void writeAndFlushNextMessageIfPossible(final Channel channel) throws IOException {
 		if (fatalError || !channel.isWritable()) {
+			// 如果当前不可写入直接返回
 			return;
 		}
 
@@ -205,6 +219,7 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 		BufferAndAvailability next = null;
 		try {
 			while (true) {
+				// 取出一个 reader
 				NetworkSequenceViewReader reader = pollAvailableReader();
 
 				// No queue with available data. We allow this here, because
@@ -215,10 +230,13 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 
 				next = reader.getNextBuffer();
 				if (next == null) {
+					// 没有读到数据
 					if (!reader.isReleased()) {
+						//还没有释放当前 subpartition，继续处理下一个 reader
 						continue;
 					}
 
+					// 出错了
 					Throwable cause = reader.getFailureCause();
 					if (cause != null) {
 						ErrorResponse msg = new ErrorResponse(
@@ -230,7 +248,9 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 				} else {
 					// This channel was now removed from the available reader queue.
 					// We re-add it into the queue if it is still available
+					// 读到了数据
 					if (next.moreAvailable()) {
+						// 这个 reader 还可以读到更多的书，继续加入队列
 						registerAvailableReader(reader);
 					}
 
@@ -242,6 +262,7 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 
 					// Write and flush and wait until this is done before
 					// trying to continue with the next buffer.
+					// 向 client 发送数据，发送成功之后通过 writeListener 的回调触发下一次发送
 					channel.writeAndFlush(msg).addListener(writeListener);
 
 					return;
@@ -317,6 +338,7 @@ class PartitionRequestQueue extends ChannelInboundHandlerAdapter {
 		public void operationComplete(ChannelFuture future) throws Exception {
 			try {
 				if (future.isSuccess()) {
+					// 发送成功，再次尝试写入
 					writeAndFlushNextMessageIfPossible(future.channel());
 				} else if (future.cause() != null) {
 					handleException(future.channel(), future.cause());

@@ -79,6 +79,7 @@ class PartitionRequestServerHandler extends SimpleChannelInboundHandler<NettyMes
 			// Intermediate result partition requests
 			// ----------------------------------------------------------------
 			if (msgClazz == PartitionRequest.class) {
+				// Server 端接收到 client 发送的 PartitionRequest
 				PartitionRequest request = (PartitionRequest) msg;
 
 				LOG.debug("Read channel on {}: {}.", ctx.channel().localAddress(), request);
@@ -90,11 +91,14 @@ class PartitionRequestServerHandler extends SimpleChannelInboundHandler<NettyMes
 						request.credit,
 						outboundQueue);
 
+					//通过 ResultPartitionProvider（实际上就是 ResultPartitionManager）创建 ResultSubpartitionView
+					//在有可被消费的数据产生后，PartitionRequestQueue.notifyReaderNonEmpty 会被回调，进而在 netty channelPipeline 上触发一次 fireUserEventTriggered
 					reader.requestSubpartitionView(
 						partitionProvider,
 						request.partitionId,
 						request.queueIndex);
 
+					//通知 PartitionRequestQueue 创建了一个 NetworkSequenceViewReader
 					outboundQueue.notifyReaderCreated(reader);
 				} catch (PartitionNotFoundException notFound) {
 					respondWithError(ctx, notFound, request.receiverId);
@@ -117,7 +121,7 @@ class PartitionRequestServerHandler extends SimpleChannelInboundHandler<NettyMes
 				outboundQueue.close();
 			} else if (msgClazz == AddCredit.class) {
 				AddCredit request = (AddCredit) msg;
-
+				// 增加 credit
 				outboundQueue.addCreditOrResumeConsumption(request.receiverId, reader -> reader.addCredit(request.credit));
 			} else if (msgClazz == ResumeConsumption.class) {
 				ResumeConsumption request = (ResumeConsumption) msg;
