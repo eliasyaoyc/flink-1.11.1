@@ -157,7 +157,10 @@ public class ConsumableNotifyingResultPartitionWriterDecorator implements Result
 	 * this will trigger the deployment of consuming tasks after the first buffer has been added.
 	 */
 	private void notifyPipelinedConsumers() {
+		// 对于 Streaming 模式的任务，由于调度模式为 EAGER，所有的 task 都已经部署了，下面的通知不会触发
 		if (!hasNotifiedPipelinedConsumers) {
+			// 对于 PIPELINE 类型的 ResultPartition，在第一条记录产生时，
+			// 会告知 JobMaster 当前 ResultPartition 可被消费，这会触发下游消费者 Task 的部署
 			partitionConsumableNotifier.notifyPartitionConsumable(jobId, partitionWriter.getPartitionId(), taskActions);
 
 			hasNotifiedPipelinedConsumers = true;

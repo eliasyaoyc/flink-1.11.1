@@ -86,8 +86,12 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	protected final ResultPartitionType partitionType;
 
 	/** The subpartitions of this partition. At least one. */
+	// ResultPartition 由 ResultSubpartition 构成
+	// ResultSubPartition 的数量由下游消费 Task 数和 DistributionPattern 来决定
+	// 例如，如果是FORWARD，则下游只有一个消费者，如果是 SHUFFLE，则下游消费者的数量和下游算子的并行度一样
 	protected final ResultSubpartition[] subpartitions;
 
+	// ResultPartitionManager 管理当前 TaskManager 所有的 ResultPartition
 	protected final ResultPartitionManager partitionManager;
 
 	public final int numTargetKeyGroups;
@@ -219,6 +223,7 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 		return bufferBuilder;
 	}
 
+	// 向指定的 subpartition 添加一个 buffer
 	@Override
 	public boolean addBufferConsumer(
 			BufferConsumer bufferConsumer,
@@ -236,6 +241,7 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 			throw ex;
 		}
 
+		// 添加 BufferConsumer 说明已经有数据生成了
 		return subpartition.add(bufferConsumer, isPriorityEvent);
 	}
 

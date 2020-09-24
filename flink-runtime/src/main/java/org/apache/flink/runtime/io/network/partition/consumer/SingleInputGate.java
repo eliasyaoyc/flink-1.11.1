@@ -141,12 +141,14 @@ public class SingleInputGate extends IndexedInputGate {
 	 * Input channels. There is a one input channel for each consumed intermediate result partition.
 	 * We store this in a map for runtime updates of single channels.
 	 */
+	// 该InputGate 包含所有的 InputChannel
 	private final Map<IntermediateResultPartitionID, InputChannel> inputChannels;
 
 	@GuardedBy("requestLock")
 	private final InputChannel[] channels;
 
 	/** Channels, which notified this input gate about available data. */
+	// InputChannel 构成的队列，这些 InputChannel 中都有可供消费的数据
 	private final ArrayDeque<InputChannel> inputChannelsWithData = new ArrayDeque<>();
 
 	/**
@@ -164,6 +166,7 @@ public class SingleInputGate extends IndexedInputGate {
 	 * Buffer pool for incoming buffers. Incoming data from remote channels is copied to buffers
 	 * from this pool.
 	 */
+	// 用于接受数据的缓冲池
 	private BufferPool bufferPool;
 
 	private boolean hasReceivedAllEndOfPartitionEvents;
@@ -282,6 +285,7 @@ public class SingleInputGate extends IndexedInputGate {
 	@Override
 	public void requestPartitions() {
 		synchronized (requestLock) {
+			// 只请求一次
 			if (!requestedPartitionsFlag) {
 				if (closeFuture.isDone()) {
 					throw new IllegalStateException("Already released.");
@@ -749,6 +753,7 @@ public class SingleInputGate extends IndexedInputGate {
 	// Channel notifications
 	// ------------------------------------------------------------------------
 
+	// 当一个InputChannel 有数据时的回调
 	void notifyChannelNonEmpty(InputChannel channel) {
 		queueChannel(checkNotNull(channel));
 	}
@@ -770,21 +775,25 @@ public class SingleInputGate extends IndexedInputGate {
 			}));
 	}
 
+	// 将新的channel 加入队列
 	private void queueChannel(InputChannel channel) {
 		int availableChannels;
 
 		CompletableFuture<?> toNotify = null;
 
 		synchronized (inputChannelsWithData) {
+			// 判断这个 channel 是否已经在队列中
 			if (enqueuedInputChannelsWithData.get(channel.getChannelIndex())) {
 				return;
 			}
 			availableChannels = inputChannelsWithData.size();
 
+			// 加入队列
 			inputChannelsWithData.add(channel);
 			enqueuedInputChannelsWithData.set(channel.getChannelIndex());
 
 			if (availableChannels == 0) {
+				// 如果之前队列中没有channel，这个channel 加入后，通知等待的线程
 				inputChannelsWithData.notifyAll();
 				toNotify = availabilityHelper.getUnavailableToResetAvailable();
 			}

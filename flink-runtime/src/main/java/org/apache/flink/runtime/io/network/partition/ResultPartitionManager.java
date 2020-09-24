@@ -36,10 +36,12 @@ public class ResultPartitionManager implements ResultPartitionProvider {
 
 	private static final Logger LOG = LoggerFactory.getLogger(ResultPartitionManager.class);
 
+	// 管理所有的 ResultPartition，使用时 Guava 提供的支持多级映射的哈希表
 	private final Map<ResultPartitionID, ResultPartition> registeredPartitions = new HashMap<>(16);
 
 	private boolean isShutdown;
 
+	// 一个 Task 在向 NetworkEnvironment 注册的时候就会逐一注册所有的 ResultPartition。
 	public void registerResultPartition(ResultPartition partition) {
 		synchronized (registeredPartitions) {
 			checkState(!isShutdown, "Result partition manager already shut down.");
@@ -54,6 +56,15 @@ public class ResultPartitionManager implements ResultPartitionProvider {
 		}
 	}
 
+	/**
+	 * 在指定的 ResultSubPartition 中创建一个 ResultSubpartitionView， 用于消费数据
+	 *
+	 * @param partitionId
+	 * @param subpartitionIndex
+	 * @param availabilityListener
+	 * @return
+	 * @throws IOException
+	 */
 	@Override
 	public ResultSubpartitionView createSubpartitionView(
 			ResultPartitionID partitionId,
@@ -69,6 +80,7 @@ public class ResultPartitionManager implements ResultPartitionProvider {
 
 			LOG.debug("Requesting subpartition {} of {}.", subpartitionIndex, partition);
 
+			// 创建 ResultSubPartitionView，可以看做是 ResultSubPartition 的消费者
 			return partition.createSubpartitionView(subpartitionIndex, availabilityListener);
 		}
 	}

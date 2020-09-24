@@ -68,10 +68,13 @@ public abstract class RecordWriter<T extends IOReadableWritable> implements Avai
 
 	private static final Logger LOG = LoggerFactory.getLogger(RecordWriter.class);
 
+	// 底层的 ResultPartitionWriter
 	private final ResultPartitionWriter targetPartition;
 
+	// channel 的数量，即sub-partition 的数量
 	protected final int numberOfChannels;
 
+	// 序列化
 	protected final RecordSerializer<T> serializer;
 
 	protected final Random rng = new XORShiftRandom();
@@ -85,6 +88,7 @@ public abstract class RecordWriter<T extends IOReadableWritable> implements Avai
 	private final boolean flushAlways;
 
 	/** The thread that periodically flushes the output, to give an upper latency bound. */
+	// 定时强制 flush 输出buffer
 	@Nullable
 	private final OutputFlusher outputFlusher;
 
@@ -95,6 +99,7 @@ public abstract class RecordWriter<T extends IOReadableWritable> implements Avai
 		this.targetPartition = writer;
 		this.numberOfChannels = writer.getNumberOfSubpartitions();
 
+		// 序列化器，将一条记录序列化到多个buffer中
 		this.serializer = new SpanningRecordSerializer<T>();
 
 		checkArgument(timeout >= -1);
@@ -102,6 +107,7 @@ public abstract class RecordWriter<T extends IOReadableWritable> implements Avai
 		if (timeout == -1 || timeout == 0) {
 			outputFlusher = null;
 		} else {
+			// 根据超时时间创建一个定时 flush 输出 buffer的线程
 			String threadName = taskName == null ?
 				DEFAULT_OUTPUT_FLUSH_THREAD_NAME :
 				DEFAULT_OUTPUT_FLUSH_THREAD_NAME + " for " + taskName;
@@ -114,15 +120,20 @@ public abstract class RecordWriter<T extends IOReadableWritable> implements Avai
 	protected void emit(T record, int targetChannel) throws IOException, InterruptedException {
 		checkErroneous();
 
+		// 序列化
 		serializer.serializeRecord(record);
 
 		// Make sure we don't hold onto the large intermediate serialization buffer for too long
+		// 将序列化结果写入buffer
 		if (copyFromSerializerToTargetChannel(targetChannel)) {
+			// 清除序列化使用的buffer（这个是序列化时临时写入的byte[]），减少内存占用
 			serializer.prune();
 		}
 	}
 
 	/**
+	 * 将序列化结果写入buffer
+	 *
 	 * @param targetChannel
 	 * @return <tt>true</tt> if the intermediate serialization buffer should be pruned
 	 */
@@ -135,23 +146,27 @@ public abstract class RecordWriter<T extends IOReadableWritable> implements Avai
 		BufferBuilder bufferBuilder = getBufferBuilder(targetChannel);
 		SerializationResult result = serializer.copyToBufferBuilder(bufferBuilder);
 		while (result.isFullBuffer()) {
+			// buffer 写满了，调用 bufferBuilder.finish 方法
 			finishBufferBuilder(bufferBuilder);
 
 			// If this was a full record, we are done. Not breaking out of the loop at this point
 			// will lead to another buffer request before breaking out (that would not be a
 			// problem per se, but it can lead to stalls in the pipeline).
 			if (result.isFullRecord()) {
+				// 当前这条记录也完整输出了
 				pruneTriggered = true;
 				emptyCurrentBufferBuilder(targetChannel);
 				break;
 			}
 
+			// 当这条记录没有写完，申请新的 buffer 写入
 			bufferBuilder = requestNewBufferBuilder(targetChannel);
 			result = serializer.copyToBufferBuilder(bufferBuilder);
 		}
 		checkState(!serializer.hasSerializedData(), "All data should be written at once");
 
 		if (flushAlways) {
+			// 强制刷新结果
 			flushTargetPartition(targetChannel);
 		}
 		return pruneTriggered;
@@ -286,6 +301,7 @@ public abstract class RecordWriter<T extends IOReadableWritable> implements Avai
 
 	/**
 	 * Requests a new {@link BufferBuilder} for the target channel and returns it.
+	 * 请求新的 BufferBuilder 用于写入数据 如果当前没有可用的 buffer 会堵塞
 	 */
 	public BufferBuilder requestNewBufferBuilder(int targetChannel) throws IOException, InterruptedException {
 		BufferBuilder builder = targetPartition.tryGetBufferBuilder(targetChannel);

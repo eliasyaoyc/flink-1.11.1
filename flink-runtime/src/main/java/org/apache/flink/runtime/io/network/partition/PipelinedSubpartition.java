@@ -71,6 +71,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 	private int buffersInBacklog;
 
 	/** The read view to consume this subpartition. */
+	// 用于消费写入的buffer
 	private PipelinedSubpartitionView readView;
 
 	/** Flag indicating whether the subpartition has been finished. */
@@ -97,6 +98,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 
 	// ------------------------------------------------------------------------
 
+	// index 是当前 sub-partition 的索引
 	PipelinedSubpartition(int index, ResultPartition parent) {
 		super(index, parent);
 	}
@@ -124,6 +126,16 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		}
 	}
 
+	/**
+	 * 添加一个新的 BufferConsumer
+	 * 这个参数里的 finish 指的是整个 subpartition 都完成了
+	 *
+	 * @param bufferConsumer
+	 * 		the buffer to add (transferring ownership to this writer)
+	 * @param isPriorityEvent
+	 * @return
+	 * @throws IOException
+	 */
 	@Override
 	public boolean add(BufferConsumer bufferConsumer, boolean isPriorityEvent) throws IOException {
 		if (isPriorityEvent) {
@@ -152,6 +164,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 			// Add the bufferConsumer and update the stats
 			handleAddingBarrier(bufferConsumer, insertAsHead);
 			updateStatistics(bufferConsumer);
+			// 更想你 backlog 的数据，只有 buffer 才会使得 buffersInBacklog + 1，事件不会增加 buffersInBacklog
 			increaseBuffersInBacklog(bufferConsumer);
 			notifyDataAvailable = insertAsHead || finish || shouldNotifyDataAvailable();
 
@@ -159,6 +172,7 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		}
 
 		if (notifyDataAvailable) {
+			// 通知数据可以被消费
 			notifyDataAvailable();
 		}
 
@@ -459,11 +473,19 @@ public class PipelinedSubpartition extends ResultSubpartition {
 		}
 	}
 
+	/**
+	 * 只在第一个 buffer 为 finish 的时候才通知
+	 *
+	 * @return
+	 */
 	private boolean shouldNotifyDataAvailable() {
 		// Notify only when we added first finished buffer.
 		return readView != null && !flushRequested && !isBlockedByCheckpoint && getNumberOfFinishedBuffers() == 1;
 	}
 
+	/**
+	 * 通知 readView，有数据可用了
+	 */
 	private void notifyDataAvailable() {
 		if (readView != null) {
 			readView.notifyDataAvailable();

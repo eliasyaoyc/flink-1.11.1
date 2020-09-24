@@ -56,21 +56,31 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 
 	private final Object requestLock = new Object();
 
-	/** The local partition manager. */
+	/**
+	 * The local partition manager.
+	 */
 	private final ResultPartitionManager partitionManager;
 
-	/** Task event dispatcher for backwards events. */
+	/**
+	 * Task event dispatcher for backwards events.
+	 */
 	private final TaskEventPublisher taskEventPublisher;
 
-	/** The consumed subpartition. */
+	/**
+	 * The consumed subpartition.
+	 */
 	private volatile ResultSubpartitionView subpartitionView;
 
 	private volatile boolean isReleased;
 
-	/** The latest already triggered checkpoint id which would be updated during {@link #spillInflightBuffers(long, ChannelStateWriter)}.*/
+	/**
+	 * The latest already triggered checkpoint id which would be updated during {@link #spillInflightBuffers(long, ChannelStateWriter)}.
+	 */
 	private long lastRequestedCheckpointId = -1;
 
-	/** The current received checkpoint id from the network. */
+	/**
+	 * The current received checkpoint id from the network.
+	 */
 	private long receivedCheckpointId = -1;
 
 	public LocalInputChannel(
@@ -106,6 +116,7 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 	// Consume
 	// ------------------------------------------------------------------------
 
+	// 请求消费对应的子分区
 	@Override
 	protected void requestSubpartition(int subpartitionIndex) throws IOException {
 
@@ -120,6 +131,9 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 					this, subpartitionIndex, partitionId);
 
 				try {
+					// Local， 无需网络通信，通过 ResultPartitionManager，创建一个 ResultSubpartitionView
+					// LocalInputChannel 实现了 BufferAvailabilityListener
+					// 再有数据时会得到通知，notifyDataAvailable 会被调用，进而将当前 channel 加到 InputGate 的可用 Channel 队列中
 					ResultSubpartitionView subpartitionView = partitionManager.createSubpartitionView(
 						partitionId, subpartitionIndex, this);
 
@@ -178,6 +192,9 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 		this.lastRequestedCheckpointId = checkpointId;
 	}
 
+	/**
+	 * 读取数据，借助 ResultSubpartitionView 消费 ResultSubpartition 中的数据
+	 */
 	@Override
 	Optional<BufferAndAvailability> getNextBuffer() throws IOException, InterruptedException {
 		checkError();
@@ -200,6 +217,7 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 			subpartitionView = checkAndWaitForSubpartitionView();
 		}
 
+		// 通过 ResultSubPartitionView 获取
 		BufferAndBacklog next = subpartitionView.getNextBuffer();
 
 		if (next == null) {
@@ -223,8 +241,10 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 		return Optional.of(new BufferAndAvailability(buffer, next.isDataAvailable(), next.buffersInBacklog()));
 	}
 
+	// 回调，在ResultSubPartition 通知 ResultSubPartitionView 有数据可供消费
 	@Override
 	public void notifyDataAvailable() {
+		// LocalInputChannel 通过 InputGate
 		notifyChannelNonEmpty();
 	}
 
@@ -259,6 +279,7 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 		checkError();
 		checkState(subpartitionView != null, "Tried to send task event to producer before requesting the subpartition.");
 
+		// 事件分发
 		if (!taskEventPublisher.publish(partitionId, event)) {
 			throw new IOException("Error while publishing event " + event + " to producer. The producer could not be found.");
 		}
