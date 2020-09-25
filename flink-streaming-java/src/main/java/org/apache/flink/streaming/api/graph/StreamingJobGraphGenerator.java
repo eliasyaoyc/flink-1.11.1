@@ -155,7 +155,11 @@ public class StreamingJobGraphGenerator {
 		jobGraph = new JobGraph(jobID, streamGraph.getJobName());
 	}
 
-	// 根据 StreamGraph，生成 JobGraph
+	/**
+	 * 根据 StreamGraph 生成 JobGraph
+	 *
+	 * @return {@link JobGraph}
+	 */
 	private JobGraph createJobGraph() {
 		preValidate();
 
@@ -288,7 +292,9 @@ public class StreamingJobGraphGenerator {
 			// 当前 operator chain 最终的输出边，不包括内部的边
 			List<StreamEdge> transitiveOutEdges = new ArrayList<StreamEdge>();
 
+			// 能组成chain 的集合
 			List<StreamEdge> chainableOutputs = new ArrayList<StreamEdge>();
+			// 不能组成chain 的集合
 			List<StreamEdge> nonChainableOutputs = new ArrayList<StreamEdge>();
 
 			StreamNode currentNode = streamGraph.getStreamNode(currentNodeId);
@@ -669,12 +675,12 @@ public class StreamingJobGraphGenerator {
 		StreamNode downStreamVertex = streamGraph.getTargetVertex(edge);
 
 		return downStreamVertex.getInEdges().size() == 1  // 下游节点只有一个输入
-				&& upStreamVertex.isSameSlotSharingGroup(downStreamVertex) // 在同一个slot 共享组种
+				&& upStreamVertex.isSameSlotSharingGroup(downStreamVertex) // 在同一个slot 共享组中
 				&& areOperatorsChainable(upStreamVertex, downStreamVertex, streamGraph)
-				&& (edge.getPartitioner() instanceof ForwardPartitioner) // 上下游节点之间的数据传输方式必须是 FORWARD，而不能是 RABALANCE 等其他模式
-				&& edge.getShuffleMode() != ShuffleMode.BATCH
+				&& (edge.getPartitioner() instanceof ForwardPartitioner) // 上下游节点之间的数据传输方式必须是 FORWARD，而不能是 RABALANCE 等其他模式（也就是说上下游节点的并行度必须是一致的）
+				&& edge.getShuffleMode() != ShuffleMode.BATCH  // 不能是 batch 模式
 				&& upStreamVertex.getParallelism() == downStreamVertex.getParallelism() // 上下游节点的并行度要一致
-				&& streamGraph.isChainingEnabled();
+				&& streamGraph.isChainingEnabled(); // 是否开启了 chain
 	}
 
 	@VisibleForTesting

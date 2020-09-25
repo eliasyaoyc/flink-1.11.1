@@ -1809,7 +1809,9 @@ public class StreamExecutionEnvironment {
 			configuration.get(DeploymentOptions.TARGET));
 
 		CompletableFuture<JobClient> jobClientFuture = executorFactory
+			// 通过配置获取执行环境，比如 yarn、k8s
 			.getExecutor(configuration)
+			// 执行，在此方法里会把 streamGraph 转换成 JobGraph
 			.execute(streamGraph, configuration);
 
 		try {
