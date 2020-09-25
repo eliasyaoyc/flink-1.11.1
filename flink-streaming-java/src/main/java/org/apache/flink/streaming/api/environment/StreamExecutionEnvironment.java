@@ -1856,7 +1856,7 @@ public class StreamExecutionEnvironment {
 	 * {@link #execute()} multiple times.
 	 *
 	 * @param jobName Desired name of the job
-	 * @param clearTransformations Whether or not to clear previously registered transformations
+	 * @param clearTransformations Whether or not to clear previously registered transformations 所以不会重复执行同一个任务
 	 * @return The streamgraph representing the transformations
 	 */
 	@Internal

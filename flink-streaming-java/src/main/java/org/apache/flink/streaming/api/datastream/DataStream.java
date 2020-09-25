@@ -1202,11 +1202,11 @@ public class DataStream<T> {
 	 * information that will transform the DataStream.
 	 *
 	 * @param operatorName
-	 *            name of the operator, for logging purposes
+	 *            name of the operator, for logging purposes  当前 transform 的名字  比如 map flatmap filter 等之类的
 	 * @param outTypeInfo
-	 *            the output type of the operator
+	 *            the output type of the operator  这是一个工具类 {@link TypeInformation} 通过反射机制 获取输出的类型
 	 * @param operator
-	 *            the object containing the transformation logic
+	 *            the object containing the transformation logic   每次transform 之后会创建新的 StreamMap
 	 * @param <R>
 	 *            type of the return stream
 	 * @return the data stream constructed

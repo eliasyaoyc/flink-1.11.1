@@ -73,7 +73,6 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 /**
  * Class representing the streaming topology. It contains all the information
  * necessary to build the jobgraph for the execution.
- *
  */
 @Internal
 public class StreamGraph implements Pipeline {
@@ -100,7 +99,9 @@ public class StreamGraph implements Pipeline {
 
 	private GlobalDataExchangeMode globalDataExchangeMode;
 
-	/** Flag to indicate whether to put all vertices into the same slot sharing group by default. */
+	/**
+	 * Flag to indicate whether to put all vertices into the same slot sharing group by default.
+	 */
 	private boolean allVerticesInSameSlotSharingGroupByDefault = true;
 
 	private Map<Integer, StreamNode> streamNodes;
@@ -133,7 +134,7 @@ public class StreamGraph implements Pipeline {
 		virtualSideOutputNodes = new HashMap<>();
 		virtualPartitionNodes = new HashMap<>();
 		vertexIDtoBrokerID = new HashMap<>();
-		vertexIDtoLoopTimeout  = new HashMap<>();
+		vertexIDtoLoopTimeout = new HashMap<>();
 		iterationSourceSinkPairs = new HashSet<>();
 		sources = new HashSet<>();
 		sinks = new HashSet<>();
@@ -237,72 +238,72 @@ public class StreamGraph implements Pipeline {
 	}
 
 	public <IN, OUT> void addSource(
-			Integer vertexID,
-			@Nullable String slotSharingGroup,
-			@Nullable String coLocationGroup,
-			SourceOperatorFactory<OUT> operatorFactory,
-			TypeInformation<IN> inTypeInfo,
-			TypeInformation<OUT> outTypeInfo,
-			String operatorName) {
+		Integer vertexID,
+		@Nullable String slotSharingGroup,
+		@Nullable String coLocationGroup,
+		SourceOperatorFactory<OUT> operatorFactory,
+		TypeInformation<IN> inTypeInfo,
+		TypeInformation<OUT> outTypeInfo,
+		String operatorName) {
 		addOperator(
-				vertexID,
-				slotSharingGroup,
-				coLocationGroup,
-				operatorFactory,
-				inTypeInfo,
-				outTypeInfo,
-				operatorName,
-				SourceOperatorStreamTask.class);
+			vertexID,
+			slotSharingGroup,
+			coLocationGroup,
+			operatorFactory,
+			inTypeInfo,
+			outTypeInfo,
+			operatorName,
+			SourceOperatorStreamTask.class);
 		sources.add(vertexID);
 	}
 
 	public <IN, OUT> void addLegacySource(
-			Integer vertexID,
-			@Nullable String slotSharingGroup,
-			@Nullable String coLocationGroup,
-			StreamOperatorFactory<OUT> operatorFactory,
-			TypeInformation<IN> inTypeInfo,
-			TypeInformation<OUT> outTypeInfo,
-			String operatorName) {
+		Integer vertexID,
+		@Nullable String slotSharingGroup,
+		@Nullable String coLocationGroup,
+		StreamOperatorFactory<OUT> operatorFactory,
+		TypeInformation<IN> inTypeInfo,
+		TypeInformation<OUT> outTypeInfo,
+		String operatorName) {
 		addOperator(vertexID, slotSharingGroup, coLocationGroup, operatorFactory, inTypeInfo, outTypeInfo, operatorName);
 		sources.add(vertexID);
 	}
 
 	public <IN, OUT> void addSink(
-			Integer vertexID,
-			@Nullable String slotSharingGroup,
-			@Nullable String coLocationGroup,
-			StreamOperatorFactory<OUT> operatorFactory,
-			TypeInformation<IN> inTypeInfo,
-			TypeInformation<OUT> outTypeInfo,
-			String operatorName) {
+		Integer vertexID,
+		@Nullable String slotSharingGroup,
+		@Nullable String coLocationGroup,
+		StreamOperatorFactory<OUT> operatorFactory,
+		TypeInformation<IN> inTypeInfo,
+		TypeInformation<OUT> outTypeInfo,
+		String operatorName) {
 		addOperator(vertexID, slotSharingGroup, coLocationGroup, operatorFactory, inTypeInfo, outTypeInfo, operatorName);
 		sinks.add(vertexID);
 	}
 
 	public <IN, OUT> void addOperator(
-			Integer vertexID,
-			@Nullable String slotSharingGroup,
-			@Nullable String coLocationGroup,
-			StreamOperatorFactory<OUT> operatorFactory,
-			TypeInformation<IN> inTypeInfo,
-			TypeInformation<OUT> outTypeInfo,
-			String operatorName) {
+		Integer vertexID,
+		@Nullable String slotSharingGroup,
+		@Nullable String coLocationGroup,
+		StreamOperatorFactory<OUT> operatorFactory,
+		TypeInformation<IN> inTypeInfo,
+		TypeInformation<OUT> outTypeInfo,
+		String operatorName) {
 		Class<? extends AbstractInvokable> invokableClass =
-				operatorFactory.isStreamSource() ? SourceStreamTask.class : OneInputStreamTask.class;
+			operatorFactory.isStreamSource() ? SourceStreamTask.class : OneInputStreamTask.class;
 		addOperator(vertexID, slotSharingGroup, coLocationGroup, operatorFactory, inTypeInfo,
-				outTypeInfo, operatorName, invokableClass);
+			outTypeInfo, operatorName, invokableClass);
 	}
 
 	private <IN, OUT> void addOperator(
-			Integer vertexID,
-			@Nullable String slotSharingGroup,
-			@Nullable String coLocationGroup,
-			StreamOperatorFactory<OUT> operatorFactory,
-			TypeInformation<IN> inTypeInfo,
-			TypeInformation<OUT> outTypeInfo,
-			String operatorName,
-			Class<? extends AbstractInvokable> invokableClass) {
+		Integer vertexID,
+		@Nullable String slotSharingGroup,
+		@Nullable String coLocationGroup,
+		StreamOperatorFactory<OUT> operatorFactory,
+		TypeInformation<IN> inTypeInfo,
+		TypeInformation<OUT> outTypeInfo,
+		String operatorName,
+		Class<? extends AbstractInvokable> invokableClass) {
 
 		addNode(vertexID, slotSharingGroup, coLocationGroup, invokableClass, operatorFactory, operatorName);
 		setSerializers(vertexID, createSerializer(inTypeInfo), null, createSerializer(outTypeInfo));
@@ -322,14 +323,14 @@ public class StreamGraph implements Pipeline {
 	}
 
 	public <IN1, IN2, OUT> void addCoOperator(
-			Integer vertexID,
-			String slotSharingGroup,
-			@Nullable String coLocationGroup,
-			StreamOperatorFactory<OUT> taskOperatorFactory,
-			TypeInformation<IN1> in1TypeInfo,
-			TypeInformation<IN2> in2TypeInfo,
-			TypeInformation<OUT> outTypeInfo,
-			String operatorName) {
+		Integer vertexID,
+		String slotSharingGroup,
+		@Nullable String coLocationGroup,
+		StreamOperatorFactory<OUT> taskOperatorFactory,
+		TypeInformation<IN1> in1TypeInfo,
+		TypeInformation<IN2> in2TypeInfo,
+		TypeInformation<OUT> outTypeInfo,
+		String operatorName) {
 
 		Class<? extends AbstractInvokable> vertexClass = TwoInputStreamTask.class;
 
@@ -350,13 +351,13 @@ public class StreamGraph implements Pipeline {
 	}
 
 	public <OUT> void addMultipleInputOperator(
-			Integer vertexID,
-			String slotSharingGroup,
-			@Nullable String coLocationGroup,
-			StreamOperatorFactory<OUT> operatorFactory,
-			List<TypeInformation<?>> inTypeInfos,
-			TypeInformation<OUT> outTypeInfo,
-			String operatorName) {
+		Integer vertexID,
+		String slotSharingGroup,
+		@Nullable String coLocationGroup,
+		StreamOperatorFactory<OUT> operatorFactory,
+		List<TypeInformation<?>> inTypeInfos,
+		TypeInformation<OUT> outTypeInfo,
+		String operatorName) {
 
 		Class<? extends AbstractInvokable> vertexClass = MultipleInputStreamTask.class;
 
@@ -380,18 +381,18 @@ public class StreamGraph implements Pipeline {
 	 * @param vertexID
 	 * @param slotSharingGroup
 	 * @param coLocationGroup
-	 * @param vertexClass 对应 StreamNode 中的 JobVertexClass 来表示该节点在TaskManager 中运行的实际任务的类型
+	 * @param vertexClass      对应 StreamNode 中的 JobVertexClass 来表示该节点在TaskManager 中运行的实际任务的类型
 	 * @param operatorFactory
-	 * @param operatorName 对应的StreamOperator
+	 * @param operatorName     对应的StreamOperator
 	 * @return
 	 */
 	protected StreamNode addNode(
-			Integer vertexID,
-			@Nullable String slotSharingGroup,
-			@Nullable String coLocationGroup,
-			Class<? extends AbstractInvokable> vertexClass,
-			StreamOperatorFactory<?> operatorFactory,
-			String operatorName) {
+		Integer vertexID,
+		@Nullable String slotSharingGroup,
+		@Nullable String coLocationGroup,
+		Class<? extends AbstractInvokable> vertexClass,
+		StreamOperatorFactory<?> operatorFactory,
+		String operatorName) {
 
 		if (streamNodes.containsKey(vertexID)) {
 			throw new RuntimeException("Duplicate vertexID " + vertexID);
@@ -399,13 +400,13 @@ public class StreamGraph implements Pipeline {
 
 		// ① 创建Node
 		StreamNode vertex = new StreamNode(
-				vertexID,
-				slotSharingGroup,
-				coLocationGroup,
-				operatorFactory,
-				operatorName,
-				new ArrayList<OutputSelector<?>>(),
-				vertexClass);
+			vertexID,
+			slotSharingGroup,
+			coLocationGroup,
+			operatorFactory,
+			operatorName,
+			new ArrayList<OutputSelector<?>>(),
+			vertexClass);
 
 		// ② 添加Node，Node中保存了 StreamOperator 和 VertexClass 信息
 		streamNodes.put(vertexID, vertex);
@@ -420,8 +421,8 @@ public class StreamGraph implements Pipeline {
 	 * <p>When adding an edge from the virtual node to a downstream node the connection will be made
 	 * to the original node, only with the selected names given here.
 	 *
-	 * @param originalId ID of the node that should be connected to.
-	 * @param virtualId ID of the virtual node.
+	 * @param originalId    ID of the node that should be connected to.
+	 * @param virtualId     ID of the virtual node.
 	 * @param selectedNames The selected names.
 	 */
 	public void addVirtualSelectNode(Integer originalId, Integer virtualId, List<String> selectedNames) {
@@ -431,7 +432,7 @@ public class StreamGraph implements Pipeline {
 		}
 
 		virtualSelectNodes.put(virtualId,
-				new Tuple2<Integer, List<String>>(originalId, selectedNames));
+			new Tuple2<Integer, List<String>>(originalId, selectedNames));
 	}
 
 	/**
@@ -439,8 +440,8 @@ public class StreamGraph implements Pipeline {
 	 * the selected side-output {@link OutputTag}.
 	 *
 	 * @param originalId ID of the node that should be connected to.
-	 * @param virtualId ID of the virtual node.
-	 * @param outputTag The selected side-output {@code OutputTag}.
+	 * @param virtualId  ID of the virtual node.
+	 * @param outputTag  The selected side-output {@code OutputTag}.
 	 */
 	public void addVirtualSideOutputNode(Integer originalId, Integer virtualId, OutputTag outputTag) {
 
@@ -460,10 +461,10 @@ public class StreamGraph implements Pipeline {
 			}
 
 			if (tag.f1.getId().equals(outputTag.getId()) &&
-					!tag.f1.getTypeInfo().equals(outputTag.getTypeInfo())) {
+				!tag.f1.getTypeInfo().equals(outputTag.getTypeInfo())) {
 				throw new IllegalArgumentException("Trying to add a side output for the same " +
-						"side-output id with a different type. This is not allowed. Side-output ID: " +
-						tag.f1.getId());
+					"side-output id with a different type. This is not allowed. Side-output ID: " +
+					tag.f1.getId());
 			}
 		}
 
@@ -477,15 +478,15 @@ public class StreamGraph implements Pipeline {
 	 * <p>When adding an edge from the virtual node to a downstream node the connection will be made
 	 * to the original node, but with the partitioning given here.
 	 *
-	 * @param originalId ID of the node that should be connected to.
-	 * @param virtualId ID of the virtual node.
+	 * @param originalId  ID of the node that should be connected to.
+	 * @param virtualId   ID of the virtual node.
 	 * @param partitioner The partitioner
 	 */
 	public void addVirtualPartitionNode(
-			Integer originalId,
-			Integer virtualId,
-			StreamPartitioner<?> partitioner,
-			ShuffleMode shuffleMode) {
+		Integer originalId,
+		Integer virtualId,
+		StreamPartitioner<?> partitioner,
+		ShuffleMode shuffleMode) {
 
 		if (virtualPartitionNodes.containsKey(virtualId)) {
 			throw new IllegalStateException("Already has virtual partition node with id " + virtualId);
@@ -514,24 +515,30 @@ public class StreamGraph implements Pipeline {
 		}
 	}
 
-	//对partition的转换没有生成具体的StreamNode和StreamEdge，而是添加一个虚节点。当partition的下游transform（如map）添加edge时（调用StreamGraph.addEdge），
-	// 会把partition信息写入到edge中。
+	/**
+	 * 对partition的转换没有生成具体的StreamNode和StreamEdge，而是添加一个虚节点。
+	 * 当partition的下游transform（如map）添加edge时（调用StreamGraph.addEdge），会把partition信息写入到edge中。
+	 *
+	 * @param upStreamVertexID 上游节点的id
+	 * @param downStreamVertexID 当前节点的id
+	 * @param typeNumber
+	 */
 	public void addEdge(Integer upStreamVertexID, Integer downStreamVertexID, int typeNumber) {
 		addEdgeInternal(upStreamVertexID,
-				downStreamVertexID,
-				typeNumber,
-				null,
-				new ArrayList<String>(),
-				null,
-				null);
+			downStreamVertexID,
+			typeNumber,
+			null,
+			new ArrayList<String>(),
+			null,
+			null);
 
 	}
 
 	/**
 	 * 在每一个物理节点的转换上，会调用此方法在输入节点和当前节点之间建立边的连接
 	 *
-	 * @param upStreamVertexID
-	 * @param downStreamVertexID
+	 * @param upStreamVertexID 上游节点的 id
+	 * @param downStreamVertexID 当前节点 id
 	 * @param typeNumber
 	 * @param partitioner
 	 * @param outputNames
@@ -539,15 +546,15 @@ public class StreamGraph implements Pipeline {
 	 * @param shuffleMode
 	 */
 	private void addEdgeInternal(Integer upStreamVertexID,
-			Integer downStreamVertexID,
-			int typeNumber,
-			StreamPartitioner<?> partitioner,
-			List<String> outputNames,
-			OutputTag outputTag,
-			ShuffleMode shuffleMode) {
+								 Integer downStreamVertexID,
+								 int typeNumber,
+								 StreamPartitioner<?> partitioner,
+								 List<String> outputNames,
+								 OutputTag outputTag,
+								 ShuffleMode shuffleMode) {
 
 		// 判断是不是虚拟节点上的边，如果是则找到虚拟节点上游对应的物理节点
-		// 在两个物理节点之间添加，并把对应的 StreamPartitioner，或者 OutputTag 等补充信息添加到 StreamEdge中
+		// 在两个物理节点之间添加，并把对应的 StreamPartitioner，或者 OutputTag 等补充信息添加到 StreamEdge 中
 		if (virtualSideOutputNodes.containsKey(upStreamVertexID)) {
 			int virtualId = upStreamVertexID;
 			// select 上游的节点id
@@ -582,6 +589,7 @@ public class StreamGraph implements Pipeline {
 			// If no partitioner was specified and the parallelism of upstream and downstream
 			// operator matches use forward partitioning, use rebalance otherwise.
 			// 未指定partitioner 的话，会为其选择 forward 或 rebalance 分区
+			// 要使用 forward 这种 partitioner 的话 需要上游和下游的分区数是完全一致的
 			if (partitioner == null && upstreamNode.getParallelism() == downstreamNode.getParallelism()) {
 				partitioner = new ForwardPartitioner<Object>();
 			} else if (partitioner == null) {
@@ -592,9 +600,9 @@ public class StreamGraph implements Pipeline {
 			if (partitioner instanceof ForwardPartitioner) {
 				if (upstreamNode.getParallelism() != downstreamNode.getParallelism()) {
 					throw new UnsupportedOperationException("Forward partitioning does not allow " +
-							"change of parallelism. Upstream operation: " + upstreamNode + " parallelism: " + upstreamNode.getParallelism() +
-							", downstream operation: " + downstreamNode + " parallelism: " + downstreamNode.getParallelism() +
-							" You must use another partitioning strategy, such as broadcast, rebalance, shuffle or global.");
+						"change of parallelism. Upstream operation: " + upstreamNode + " parallelism: " + upstreamNode.getParallelism() +
+						", downstream operation: " + downstreamNode + " parallelism: " + downstreamNode.getParallelism() +
+						" You must use another partitioning strategy, such as broadcast, rebalance, shuffle or global.");
 				}
 			}
 
@@ -681,9 +689,9 @@ public class StreamGraph implements Pipeline {
 	}
 
 	private <OUT> void setSerializers(
-			Integer vertexID,
-			List<TypeInformation<?>> inTypeInfos,
-			TypeSerializer<OUT> out) {
+		Integer vertexID,
+		List<TypeInformation<?>> inTypeInfos,
+		TypeSerializer<OUT> out) {
 
 		StreamNode vertex = getStreamNode(vertexID);
 
@@ -890,8 +898,7 @@ public class StreamGraph implements Pipeline {
 	public String getStreamingPlanAsJSON() {
 		try {
 			return new JSONGenerator(this).getJSON();
-		}
-		catch (Exception e) {
+		} catch (Exception e) {
 			throw new RuntimeException("JSON plan creation failed", e);
 		}
 	}
