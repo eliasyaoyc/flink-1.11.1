@@ -168,6 +168,11 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
  * TaskExecutor implementation. The task executor is responsible for the execution of multiple
+ *
+ * 需要向 ResourceManager 报告所有 slot 的状态，主要发生在两种情况下：
+ * 1. 首次和 ResourceManager 建立连接的时候，需要发送 SlotReport  {@link #establishResourceManagerConnection}
+ * 2. TaskExecutor 和 ResourceManager 定期发送心跳消息，心跳消息中包含 SlotReport {@link ResourceManagerHeartbeatListener}
+ *
  * {@link Task}.
  */
 public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
@@ -913,6 +918,19 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 	// Slot allocation RPCs
 	// ----------------------------------------------------------------------
 
+	/**
+	 * ResourceManager 通过此方法来要求 TaskExecutor 分配 slot，由于 ResourceManager 知道所有 slot 的当前状况，
+	 * 因为分配请求会精确到具体的 SlotId.
+	 *
+	 * @param slotId slot id for the request
+	 * @param jobId for which to request a slot
+	 * @param allocationId id for the request
+	 * @param resourceProfile of requested slot, used only for dynamic slot allocation and will be ignored otherwise
+	 * @param targetAddress to which to offer the requested slots
+	 * @param resourceManagerId current leader id of the ResourceManager
+	 * @param timeout for the operation
+	 * @return
+	 */
 	@Override
 	public CompletableFuture<Acknowledge> requestSlot(
 		final SlotID slotId,
@@ -927,6 +945,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		log.info("Receive slot request {} for job {} from resource manager with leader id {}.",
 			allocationId, jobId, resourceManagerId);
 
+		// 判断发送请求的 ResourceManager 是否是当前 TaskExecutor 注册的
 		if (!isConnectedToResourceManager(resourceManagerId)) {
 			final String message = String.format("TaskManager is not connected to the resource manager %s.", resourceManagerId);
 			log.debug(message);
@@ -934,6 +953,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		}
 
 		try {
+			// 分配 slot
 			allocateSlot(
 				slotId,
 				jobId,
@@ -968,6 +988,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 			return FutureUtils.completedExceptionally(new SlotAllocationException("Could not create new job.", e));
 		}
 
+		// 只发送给已连接的 JobManager
 		if (job.isConnected()) {
 			offerSlotsToJobManager(jobId);
 		}
@@ -990,6 +1011,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		JobID jobId,
 		AllocationID allocationId,
 		ResourceProfile resourceProfile) throws SlotAllocationException {
+		// 如果 slot 是 free 状态， 则分配 slot
 		if (taskSlotTable.isSlotFree(slotId.getSlotNumber())) {
 			if (taskSlotTable.allocateSlot(slotId.getSlotNumber(), jobId, allocationId, resourceProfile, taskManagerConfiguration.getTimeout())) {
 				log.info("Allocated slot for {}.", allocationId);
@@ -998,6 +1020,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				throw new SlotAllocationException("Could not allocate slot.");
 			}
 		} else if (!taskSlotTable.isAllocated(slotId.getSlotNumber(), jobId, allocationId)) {
+			// 如果 slot 是已经被分配了，则抛出异常
 			final String message = "The slot " + slotId + " has already been allocated for a different job.";
 
 			log.info(message);
@@ -1007,6 +1030,14 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		}
 	}
 
+	/**
+	 * 释放 AllocationID 关联的slot
+	 *
+	 * @param allocationId identifying the slot to free
+	 * @param cause of the freeing operation
+	 * @param timeout for the operation
+	 * @return
+	 */
 	@Override
 	public CompletableFuture<Acknowledge> freeSlot(AllocationID allocationId, Throwable cause, Time timeout) {
 		freeSlotInternal(allocationId, cause);
@@ -1288,6 +1319,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 	/**
 	 * 在 Slot 被分配之后，TaskExecutor 需要将对应的 slot 提供给 JobManager
+	 *
 	 * @param jobId
 	 */
 	private void offerSlotsToJobManager(final JobID jobId) {

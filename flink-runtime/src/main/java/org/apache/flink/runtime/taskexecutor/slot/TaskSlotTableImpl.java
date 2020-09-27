@@ -195,6 +195,11 @@ public class TaskSlotTableImpl<T extends TaskSlotPayload> implements TaskSlotTab
 	// Slot report methods
 	// ---------------------------------------------------------------------
 
+	/**
+	 * 获得 SlotReport 对象， 包含当前 TaskExecutor 中所有 slot 的状态以及它们的分配情况
+	 * @param resourceId
+	 * @return
+	 */
 	@Override
 	public SlotReport createSlotReport(ResourceID resourceId) {
 		List<SlotStatus> slotStatuses = new ArrayList<>();
@@ -257,6 +262,15 @@ public class TaskSlotTableImpl<T extends TaskSlotPayload> implements TaskSlotTab
 		return allocateSlot(index, jobId, allocationId, defaultSlotResourceProfile, slotTimeout);
 	}
 
+	/**
+	 * 将指定 index 的 slot 分配给 AllocationID 对应的请求
+	 * @param index of the task slot to allocate, use negative value for dynamic slot allocation
+	 * @param jobId to allocate the task slot for
+	 * @param allocationId identifying the allocation
+	 * @param resourceProfile of the requested slot, used only for dynamic slot allocation and will be ignored otherwise
+	 * @param slotTimeout until the slot times out
+	 * @return
+	 */
 	@Override
 	public boolean allocateSlot(
 			int index,
@@ -322,6 +336,12 @@ public class TaskSlotTableImpl<T extends TaskSlotPayload> implements TaskSlotTab
 		return true;
 	}
 
+	/**
+	 * 把对应的 slot 标记被 active
+	 * @param allocationId to identify the task slot to mark as active
+	 * @return
+	 * @throws SlotNotFoundException
+	 */
 	@Override
 	public boolean markSlotActive(AllocationID allocationId) throws SlotNotFoundException {
 		checkRunning();
@@ -329,6 +349,7 @@ public class TaskSlotTableImpl<T extends TaskSlotPayload> implements TaskSlotTab
 		TaskSlot<T> taskSlot = getTaskSlot(allocationId);
 
 		if (taskSlot != null) {
+			// 调用此方法 取消在分配 slot 的时候关联的定时器.
 			return markExistingSlotActive(taskSlot);
 		} else {
 			throw new SlotNotFoundException(allocationId);

@@ -68,6 +68,7 @@ public class TaskSlot<T extends TaskSlotPayload> implements AutoCloseableAsync {
 	private final ResourceProfile resourceProfile;
 
 	/** Tasks running in this slot. */
+	// 在一个 Slot 中可能执行多个 task
 	private final Map<ExecutionAttemptID, T> tasks;
 
 	private final MemoryManager memoryManager;
