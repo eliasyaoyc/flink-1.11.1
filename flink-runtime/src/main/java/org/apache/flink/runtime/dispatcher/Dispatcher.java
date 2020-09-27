@@ -111,6 +111,7 @@ public abstract class Dispatcher extends PermanentlyFencedRpcEndpoint<Dispatcher
 	private final RunningJobsRegistry runningJobsRegistry;
 
 	private final HighAvailabilityServices highAvailabilityServices;
+	// resource manager 的 gateway retriever， 可以和 resource manager 通信
 	private final GatewayRetriever<ResourceManagerGateway> resourceManagerGatewayRetriever;
 	private final JobManagerSharedServices jobManagerSharedServices;
 	private final HeartbeatServices heartbeatServices;
@@ -138,10 +139,10 @@ public abstract class Dispatcher extends PermanentlyFencedRpcEndpoint<Dispatcher
 	protected final CompletableFuture<ApplicationStatus> shutDownFuture;
 
 	public Dispatcher(
-			RpcService rpcService,
-			DispatcherId fencingToken,
-			DispatcherBootstrap dispatcherBootstrap,
-			DispatcherServices dispatcherServices) throws Exception {
+		RpcService rpcService,
+		DispatcherId fencingToken,
+		DispatcherBootstrap dispatcherBootstrap,
+		DispatcherServices dispatcherServices) throws Exception {
 		super(rpcService, AkkaRpcServiceUtils.createRandomName(DISPATCHER_NAME), fencingToken);
 		checkNotNull(dispatcherServices);
 
@@ -270,6 +271,15 @@ public abstract class Dispatcher extends PermanentlyFencedRpcEndpoint<Dispatcher
 	// RPCs
 	//------------------------------------------------------
 
+	/**
+	 * Dispatcher 接受到提交过来的 Job, 会将 JobGraph 保存在 SubmittedJobGraph 中（用于故障恢复），
+	 * 并未提交的 JobGraph 启动 JobManager
+	 *
+	 * @param jobGraph JobGraph to submit
+	 * @param timeout  RPC timeout
+	 * @return
+	 * @see MiniDispatcher#submitJob(JobGraph, Time)
+	 */
 	@Override
 	public CompletableFuture<Acknowledge> submitJob(JobGraph jobGraph, Time timeout) {
 		log.info("Received JobGraph submission {} ({}).", jobGraph.getJobID(), jobGraph.getName());
@@ -281,8 +291,9 @@ public abstract class Dispatcher extends PermanentlyFencedRpcEndpoint<Dispatcher
 			} else if (isPartialResourceConfigured(jobGraph)) {
 				return FutureUtils.completedExceptionally(
 					new JobSubmissionException(jobGraph.getJobID(), "Currently jobs is not supported if parts of the vertices have " +
-							"resources configured. The limitation will be removed in future versions."));
+						"resources configured. The limitation will be removed in future versions."));
 			} else {
+				// key method
 				return internalSubmitJob(jobGraph);
 			}
 		} catch (FlinkException e) {
@@ -537,8 +548,8 @@ public abstract class Dispatcher extends PermanentlyFencedRpcEndpoint<Dispatcher
 
 	@Override
 	public CompletableFuture<OperatorBackPressureStatsResponse> requestOperatorBackPressureStats(
-			final JobID jobId,
-			final JobVertexID jobVertexId) {
+		final JobID jobId,
+		final JobVertexID jobVertexId) {
 		final CompletableFuture<JobMasterGateway> jobMasterGatewayFuture = getJobMasterGatewayFuture(jobId);
 
 		return jobMasterGatewayFuture.thenCompose((JobMasterGateway jobMasterGateway) -> jobMasterGateway.requestOperatorBackPressureStats(jobVertexId));
@@ -602,10 +613,10 @@ public abstract class Dispatcher extends PermanentlyFencedRpcEndpoint<Dispatcher
 
 	@Override
 	public CompletableFuture<String> triggerSavepoint(
-			final JobID jobId,
-			final String targetDirectory,
-			final boolean cancelJob,
-			final Time timeout) {
+		final JobID jobId,
+		final String targetDirectory,
+		final boolean cancelJob,
+		final Time timeout) {
 		final CompletableFuture<JobMasterGateway> jobMasterGatewayFuture = getJobMasterGatewayFuture(jobId);
 
 		return jobMasterGatewayFuture.thenCompose(
@@ -615,15 +626,15 @@ public abstract class Dispatcher extends PermanentlyFencedRpcEndpoint<Dispatcher
 
 	@Override
 	public CompletableFuture<String> stopWithSavepoint(
-			final JobID jobId,
-			final String targetDirectory,
-			final boolean advanceToEndOfEventTime,
-			final Time timeout) {
+		final JobID jobId,
+		final String targetDirectory,
+		final boolean advanceToEndOfEventTime,
+		final Time timeout) {
 		final CompletableFuture<JobMasterGateway> jobMasterGatewayFuture = getJobMasterGatewayFuture(jobId);
 
 		return jobMasterGatewayFuture.thenCompose(
-				(JobMasterGateway jobMasterGateway) ->
-						jobMasterGateway.stopWithSavepoint(targetDirectory, advanceToEndOfEventTime, timeout));
+			(JobMasterGateway jobMasterGateway) ->
+				jobMasterGateway.stopWithSavepoint(targetDirectory, advanceToEndOfEventTime, timeout));
 	}
 
 	@Override
@@ -639,10 +650,10 @@ public abstract class Dispatcher extends PermanentlyFencedRpcEndpoint<Dispatcher
 
 	@Override
 	public CompletableFuture<CoordinationResponse> deliverCoordinationRequestToCoordinator(
-			JobID jobId,
-			OperatorID operatorId,
-			SerializedValue<CoordinationRequest> serializedRequest,
-			Time timeout) {
+		JobID jobId,
+		OperatorID operatorId,
+		SerializedValue<CoordinationRequest> serializedRequest,
+		Time timeout) {
 		final CompletableFuture<JobMasterGateway> jobMasterGatewayFuture = getJobMasterGatewayFuture(jobId);
 
 		return jobMasterGatewayFuture.thenCompose(
@@ -654,7 +665,7 @@ public abstract class Dispatcher extends PermanentlyFencedRpcEndpoint<Dispatcher
 	 * Cleans up the job related data from the dispatcher. If cleanupHA is true, then
 	 * the data will also be removed from HA.
 	 *
-	 * @param jobId JobID identifying the job to clean up
+	 * @param jobId     JobID identifying the job to clean up
 	 * @param cleanupHA True iff HA data shall also be cleaned up
 	 */
 	private void removeJobAndRegisterTerminationFuture(JobID jobId, boolean cleanupHA) {
@@ -859,7 +870,8 @@ public abstract class Dispatcher extends PermanentlyFencedRpcEndpoint<Dispatcher
 				throw new CompletionException(
 					new DispatcherException(
 						String.format("Termination of previous JobManager for job %s failed. Cannot submit job under the same job id.", jobId),
-						throwable)); });
+						throwable));
+			});
 
 		return jobManagerTerminationFuture.thenComposeAsync(
 			FunctionUtils.uncheckedFunction((ignored) -> {

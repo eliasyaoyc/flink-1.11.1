@@ -320,8 +320,10 @@ public class MiniCluster implements JobExecutorService, AutoCloseableAsync {
 				ioExecutor = Executors.newFixedThreadPool(
 					ClusterEntrypointUtils.getPoolSize(configuration),
 					new ExecutorThreadFactory("mini-cluster-io"));
+				// 创建 HighAvailabilityServices
 				haServices = createHighAvailabilityServices(configuration, ioExecutor);
 
+				// 创建 blobServer 并启动
 				blobServer = new BlobServer(configuration, haServices.createBlobStore());
 				blobServer.start();
 
@@ -331,6 +333,7 @@ public class MiniCluster implements JobExecutorService, AutoCloseableAsync {
 					configuration, haServices.createBlobStore(), new InetSocketAddress(InetAddress.getLocalHost(), blobServer.getPort())
 				);
 
+				// 启动 taskManager
 				startTaskManagers();
 
 				MetricQueryServiceRetriever metricQueryServiceRetriever = new RpcMetricQueryServiceRetriever(metricRegistry.getMetricQueryServiceRpcService());
@@ -524,6 +527,7 @@ public class MiniCluster implements JobExecutorService, AutoCloseableAsync {
 
 		LOG.info("Starting {} TaskManger(s)", numTaskManagers);
 
+		// 获取 TaskManager 的数据 依次启动
 		for (int i = 0; i < numTaskManagers; i++) {
 			startTaskExecutor();
 		}
@@ -546,6 +550,7 @@ public class MiniCluster implements JobExecutorService, AutoCloseableAsync {
 				ExternalResourceInfoProvider.NO_EXTERNAL_RESOURCES,
 				taskManagerTerminatingFatalErrorHandlerFactory.create(taskManagers.size()));
 
+			// TaskExecutor 实现了  RpcEndpoint 接口， 用于和 ResourceManager 通信，可以通过 HighAvailabilityService 获得对应的服务地址
 			taskExecutor.start();
 			taskManagers.add(taskExecutor);
 		}
@@ -684,6 +689,12 @@ public class MiniCluster implements JobExecutorService, AutoCloseableAsync {
 		}
 	}
 
+	/**
+	 * 提交 job 任务
+	 *
+	 * @param jobGraph
+	 * @return
+	 */
 	public CompletableFuture<JobSubmissionResult> submitJob(JobGraph jobGraph) {
 		// 通过Dispatcher 的 gateway retriever 获取 DispatcherGateway
 		final CompletableFuture<DispatcherGateway> dispatcherGatewayFuture = getDispatcherGatewayFuture();

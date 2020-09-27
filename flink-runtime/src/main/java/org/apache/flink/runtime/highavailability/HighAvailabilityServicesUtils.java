@@ -82,6 +82,14 @@ public class HighAvailabilityServicesUtils {
 		}
 	}
 
+	/**
+	 * 根据 Configuration 创建 HighAvailabilityServices，会根据 highAvailabilityMode 的不同而创建具体的实现
+	 * @param configuration
+	 * @param executor
+	 * @param addressResolution
+	 * @return
+	 * @throws Exception
+	 */
 	public static HighAvailabilityServices createHighAvailabilityServices(
 		Configuration configuration,
 		Executor executor,

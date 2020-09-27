@@ -205,7 +205,7 @@ public abstract class ClusterEntrypoint implements AutoCloseableAsync, FatalErro
 	private void runCluster(Configuration configuration, PluginManager pluginManager) throws Exception {
 		synchronized (lock) {
 
-			//初始化 RpcService， HighAvailabilityServices  等服务
+			// 初始化 RpcService， HighAvailabilityServices  等服务
 			initializeServices(configuration, pluginManager);
 
 			// write host information into configuration
@@ -267,6 +267,7 @@ public abstract class ClusterEntrypoint implements AutoCloseableAsync, FatalErro
 			ioExecutor = Executors.newFixedThreadPool(
 				ClusterEntrypointUtils.getPoolSize(configuration),
 				new ExecutorThreadFactory("cluster-io"));
+			// 创建 HighAvailabilityServices
 			haServices = createHaServices(configuration, ioExecutor);
 			blobServer = new BlobServer(configuration, haServices.createBlobStore());
 			blobServer.start();

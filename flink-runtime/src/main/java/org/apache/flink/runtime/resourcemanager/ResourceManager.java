@@ -222,6 +222,7 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
 
 			initialize();
 
+			// 参与选举
 			leaderElectionService.start(this);
 			jobLeaderIdService.start(new JobLeaderIdActionsImpl());
 
