@@ -47,6 +47,7 @@ import static org.apache.flink.util.Preconditions.checkState;
 
 /**
  * An input channel, which requests a local subpartition.
+ * 本地数据交换
  */
 public class LocalInputChannel extends InputChannel implements BufferAvailabilityListener {
 
@@ -116,7 +117,12 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
 	// Consume
 	// ------------------------------------------------------------------------
 
-	// 请求消费对应的子分区
+	/**
+	 * 请求消费对应的子分区
+	 *
+	 * @param subpartitionIndex
+	 * @throws IOException
+	 */
 	@Override
 	protected void requestSubpartition(int subpartitionIndex) throws IOException {
 

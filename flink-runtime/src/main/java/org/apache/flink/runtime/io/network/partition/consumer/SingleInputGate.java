@@ -140,15 +140,19 @@ public class SingleInputGate extends IndexedInputGate {
 	/**
 	 * Input channels. There is a one input channel for each consumed intermediate result partition.
 	 * We store this in a map for runtime updates of single channels.
+	 *
+	 * 该InputGate 包含所有的 InputChannel
 	 */
-	// 该InputGate 包含所有的 InputChannel
 	private final Map<IntermediateResultPartitionID, InputChannel> inputChannels;
 
 	@GuardedBy("requestLock")
 	private final InputChannel[] channels;
 
-	/** Channels, which notified this input gate about available data. */
-	// InputChannel 构成的队列，这些 InputChannel 中都有可供消费的数据
+	/**
+	 * Channels, which notified this input gate about available data.
+	 *
+	 * InputChannel 构成的队列，这些 InputChannel 中都有可供消费的数据
+	 */
 	private final ArrayDeque<InputChannel> inputChannelsWithData = new ArrayDeque<>();
 
 	/**
@@ -165,8 +169,9 @@ public class SingleInputGate extends IndexedInputGate {
 	/**
 	 * Buffer pool for incoming buffers. Incoming data from remote channels is copied to buffers
 	 * from this pool.
+	 *
+	 * 用于接受数据的缓冲池
 	 */
-	// 用于接受数据的缓冲池
 	private BufferPool bufferPool;
 
 	private boolean hasReceivedAllEndOfPartitionEvents;

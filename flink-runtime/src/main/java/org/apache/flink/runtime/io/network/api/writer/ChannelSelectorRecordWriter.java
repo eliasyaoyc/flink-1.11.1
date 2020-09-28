@@ -37,9 +37,15 @@ import static org.apache.flink.util.Preconditions.checkState;
  */
 public final class ChannelSelectorRecordWriter<T extends IOReadableWritable> extends RecordWriter<T> {
 
+	/**
+	 * 决定一条记录应该写入哪一个 channel，即 sub-partition
+	 */
 	private final ChannelSelector<T> channelSelector;
 
-	/** Every subpartition maintains a separate buffer builder which might be null. */
+	/**
+	 * Every subpartition maintains a separate buffer builder which might be null.
+	 * 供每一个 channel 写入数据使用
+	 */
 	private final BufferBuilder[] bufferBuilders;
 
 	ChannelSelectorRecordWriter(

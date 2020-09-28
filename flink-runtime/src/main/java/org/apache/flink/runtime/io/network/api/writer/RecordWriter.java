@@ -117,6 +117,19 @@ public abstract class RecordWriter<T extends IOReadableWritable> implements Avai
 		}
 	}
 
+	/**
+	 * 当Task 通过 RecordWrite 输出一条记录时：
+	 *
+	 * 1. 通过 ChannelSelector 确定写入的目标 channel
+	 * 2. 使用 RecordSerializer 对记录进行序列化
+	 * 3. 向 ResultPartition 请求 BufferBuilder，用于写入序列化结果
+	 * 4. 向 ResultPartition 添加 BufferConsumer，用于读取写入 Buffer 的数据
+	 *
+	 * @param record
+	 * @param targetChannel
+	 * @throws IOException
+	 * @throws InterruptedException
+	 */
 	protected void emit(T record, int targetChannel) throws IOException, InterruptedException {
 		checkErroneous();
 
@@ -295,6 +308,12 @@ public abstract class RecordWriter<T extends IOReadableWritable> implements Avai
 		}
 	}
 
+	/**
+	 * 添加一个 BufferConsumer，会转移交给对应的 ResultSubpartition
+	 * @param consumer
+	 * @param targetChannel
+	 * @throws IOException
+	 */
 	protected void addBufferConsumer(BufferConsumer consumer, int targetChannel) throws IOException {
 		targetPartition.addBufferConsumer(consumer, targetChannel);
 	}

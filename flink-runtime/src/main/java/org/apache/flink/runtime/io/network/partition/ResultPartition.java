@@ -71,6 +71,9 @@ import static org.apache.flink.util.Preconditions.checkState;
  * <h2>Buffer management</h2>
  *
  * <h2>State management</h2>
+ *
+ *
+ * ResultPartition 都有一个关联的 ResultPartitionWriter，同时也都有一个独立的 LocalBufferPool 负责提供写入数据所需的 buffer。
  */
 public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 
@@ -85,13 +88,18 @@ public class ResultPartition implements ResultPartitionWriter, BufferPoolOwner {
 	/** Type of this partition. Defines the concrete subpartition implementation to use. */
 	protected final ResultPartitionType partitionType;
 
-	/** The subpartitions of this partition. At least one. */
-	// ResultPartition 由 ResultSubpartition 构成
-	// ResultSubPartition 的数量由下游消费 Task 数和 DistributionPattern 来决定
-	// 例如，如果是FORWARD，则下游只有一个消费者，如果是 SHUFFLE，则下游消费者的数量和下游算子的并行度一样
+	/**
+	 * The subpartitions of this partition. At least one.
+	 *
+	 * ResultPartition 由 ResultSubpartition 构成
+	 * ResultSubPartition 的数量由下游消费 Task 数和 DistributionPattern 来决定
+	 * 例如，如果是FORWARD，则下游只有一个消费者，如果是 SHUFFLE，则下游消费者的数量和下游算子的并行度一样
+	 */
 	protected final ResultSubpartition[] subpartitions;
 
-	// ResultPartitionManager 管理当前 TaskManager 所有的 ResultPartition
+	/**
+	 * ResultPartitionManager 管理当前 TaskManager 所有的 ResultPartition
+	 */
 	protected final ResultPartitionManager partitionManager;
 
 	public final int numTargetKeyGroups;
