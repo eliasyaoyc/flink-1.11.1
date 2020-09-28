@@ -101,8 +101,10 @@ public class SlotManagerImpl implements SlotManager {
 	/** Map of pending/unfulfilled slot allocation requests. */
 	private final HashMap<AllocationID, PendingSlotRequest> pendingSlotRequests;
 
-	// 资源不足的时候会通过 ResourceActions#allocateResource(ResourceProfile) 申请新的资源（可能启动新的 TaskManager，也可能什么也不做）
-	// 这些新申请的资源会被封装为 PendingTaskManagerSlot
+	/**
+	 * 资源不足的时候会通过 {@link ResourceActions#allocateResource(WorkerResourceSpec)} 申请新的资源 （可能启动新的 TaskManager，也可能什么也不做）
+	 * 这些新申请的资源会被封装为 {@link PendingTaskManagerSlot}
+	 */
 	private final HashMap<TaskManagerSlotId, PendingTaskManagerSlot> pendingSlots;
 
 	private final SlotMatchingStrategy slotMatchingStrategy;
@@ -286,6 +288,7 @@ public class SlotManagerImpl implements SlotManager {
 
 		started = true;
 
+		// 定时任务 检查 TaskExecutor 是否长时间处于 idle 状态
 		taskManagerTimeoutCheck = scheduledExecutor.scheduleWithFixedDelay(
 			() -> mainThreadExecutor.execute(
 				() -> checkTaskManagerTimeouts()),
@@ -293,6 +296,7 @@ public class SlotManagerImpl implements SlotManager {
 			taskManagerTimeout.toMilliseconds(),
 			TimeUnit.MILLISECONDS);
 
+		// 定时任务 检查 slot request 是否超时
 		slotRequestTimeoutCheck = scheduledExecutor.scheduleWithFixedDelay(
 			() -> mainThreadExecutor.execute(
 				() -> checkSlotRequestTimeouts()),
@@ -380,9 +384,10 @@ public class SlotManagerImpl implements SlotManager {
 
 			return false;
 		} else {
-			// 将请求封装为 PendingSlotReques
+			// 将请求封装为 PendingSlotRequest
 			PendingSlotRequest pendingSlotRequest = new PendingSlotRequest(slotRequest);
 
+			// 放入 pendingSlotRequest 集合中 等待处理
 			pendingSlotRequests.put(slotRequest.getAllocationId(), pendingSlotRequest);
 
 			try {
@@ -971,6 +976,8 @@ public class SlotManagerImpl implements SlotManager {
 	 * Allocates the given slot for the given slot request. This entails sending a registration
 	 * message to the task manager and treating failures.
 	 *
+	 * 通过请求 TaskExecutor 分配 slot.
+	 *
 	 * @param taskManagerSlot to allocate for the given slot request
 	 * @param pendingSlotRequest to allocate the given slot for
 	 */
@@ -1304,10 +1311,12 @@ public class SlotManagerImpl implements SlotManager {
 				if (currentTime - slotRequest.getCreationTimestamp() >= slotRequestTimeout.toMilliseconds()) {
 					slotRequestIterator.remove();
 
+					// slot request 超时， 取消 PendingSlotRequest
 					if (slotRequest.isAssigned()) {
 						cancelPendingSlotRequest(slotRequest);
 					}
 
+					// 并通知 ResourceManager
 					resourceActions.notifyAllocationFailure(
 						slotRequest.getJobId(),
 						slotRequest.getAllocationId(),

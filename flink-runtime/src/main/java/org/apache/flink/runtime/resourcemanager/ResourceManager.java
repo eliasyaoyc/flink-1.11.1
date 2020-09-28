@@ -1146,6 +1146,11 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
 	//  Static utility classes
 	// ------------------------------------------------------------------------
 
+	/**
+	 * 如果当前注册的 slot 不能满足 slot request 的要求，那么 SlotManager 会通过 {@link ResourceActions#allocateResource(WorkerResourceSpec)} 回调告知 {@link ResourceManager},
+	 * 当一个 SlotManger 检查到一个 TaskExecutor 长事件处理 Idle 状态时，也会通知 {@link ResourceActions#releaseResource(InstanceID, Exception)} 回调告知 {@link ResourceManager}
+	 * 通过这两个回调，就可以动态的申请资源及释放资源.
+	 */
 	private class ResourceActionsImpl implements ResourceActions {
 
 		@Override
