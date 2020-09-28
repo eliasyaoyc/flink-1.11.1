@@ -54,6 +54,7 @@ import java.util.stream.Collectors;
 /**
  * Scheduler that assigns tasks to slots. This class is currently work in progress, comments will be updated as we
  * move forward.
+ * 任务调度时 LogicalSot 资源的申请通过 Scheduler 接口进行管理.
  */
 public class SchedulerImpl implements Scheduler {
 
@@ -61,11 +62,17 @@ public class SchedulerImpl implements Scheduler {
 
 	private static final int DEFAULT_SLOT_SHARING_MANAGERS_MAP_SIZE = 128;
 
-	/** Strategy that selects the best slot for a given slot allocation request. */
+	/**
+	 * Strategy that selects the best slot for a given slot allocation request.
+	 * 主要用于从一组 slot 中选出最符合资源申请偏好的一个
+	 */
 	@Nonnull
 	private final SlotSelectionStrategy slotSelectionStrategy;
 
-	/** The slot pool from which slots are allocated. */
+	/**
+	 * The slot pool from which slots are allocated.
+	 * 用于申请 PhysicalSlot
+	 */
 	@Nonnull
 	private final SlotPool slotPool;
 
@@ -73,7 +80,10 @@ public class SchedulerImpl implements Scheduler {
 	@Nonnull
 	private ComponentMainThreadExecutor componentMainThreadExecutor;
 
-	/** Managers for the different slot sharing groups. */
+	/**
+	 * Managers for the different slot sharing groups.
+	 * 用于实现 slot 共享
+	 */
 	@Nonnull
 	private final Map<SlotSharingGroupId, SlotSharingManager> slotSharingManagers;
 
@@ -104,6 +114,15 @@ public class SchedulerImpl implements Scheduler {
 
 	//---------------------------
 
+	/**
+	 * 申请 slot， 返回一个 LogicalSlot 的 future
+	 *
+	 * @param slotRequestId identifying the slot request
+	 * @param scheduledUnit The task to allocate the slot for
+	 * @param slotProfile profile of the requested slot
+	 * @param allocationTimeout after which the allocation fails with a timeout exception
+	 * @return
+	 */
 	@Override
 	public CompletableFuture<LogicalSlot> allocateSlot(
 			SlotRequestId slotRequestId,
@@ -155,6 +174,7 @@ public class SchedulerImpl implements Scheduler {
 			ScheduledUnit scheduledUnit,
 			SlotProfile slotProfile,
 			Time allocationTimeout) {
+		// 如果没有指定 SlotSharingGroupId，说明这个任务不运行 slot 共享，要独占一个 slot
 		CompletableFuture<LogicalSlot> allocationFuture = scheduledUnit.getSlotSharingGroupId() == null ?
 			allocateSingleSlot(slotRequestId, slotProfile, allocationTimeout) :
 			allocateSharedSlot(slotRequestId, scheduledUnit, slotProfile, allocationTimeout);
@@ -197,6 +217,14 @@ public class SchedulerImpl implements Scheduler {
 
 	//---------------------------
 
+	/**
+	 * 如果不允许资源共享，那么直接从 SlotPool 中获取 PhysicalSlot， 然后创建一个 LogicalSlot 即可.
+	 *
+	 * @param slotRequestId
+	 * @param slotProfile
+	 * @param allocationTimeout
+	 * @return
+	 */
 	private CompletableFuture<LogicalSlot> allocateSingleSlot(
 			SlotRequestId slotRequestId,
 			SlotProfile slotProfile,
@@ -288,6 +316,16 @@ public class SchedulerImpl implements Scheduler {
 
 	// ------------------------------- slot sharing code
 
+	/**
+	 * 需要进行资源共享，需要考虑 CoLocationGroup 强制约束的情况，核心在于构造 TaskSlot 构成的树，
+	 * 然后在树上创建一个叶子节点，叶子节点里封装了需要的 LogicalSlot.
+	 *
+	 * @param slotRequestId
+	 * @param scheduledUnit
+	 * @param slotProfile
+	 * @param allocationTimeout
+	 * @return
+	 */
 	private CompletableFuture<LogicalSlot> allocateSharedSlot(
 		SlotRequestId slotRequestId,
 		ScheduledUnit scheduledUnit,

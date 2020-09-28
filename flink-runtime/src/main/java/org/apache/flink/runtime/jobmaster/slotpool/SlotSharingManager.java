@@ -89,28 +89,36 @@ public class SlotSharingManager {
 
 	private final SlotSharingGroupId slotSharingGroupId;
 
-	/** Actions to release allocated slots after a complete multi task slot hierarchy has been released. */
+	/**
+	 * Actions to release allocated slots after a complete multi task slot hierarchy has been released.
+	 */
 	private final AllocatedSlotActions allocatedSlotActions;
 
-	/** Owner of the slots to which to return them when they are released from the outside. */
+	/**
+	 * Owner of the slots to which to return them when they are released from the outside.
+	 */
 	private final SlotOwner slotOwner;
 
 	// 所有的 TaskSlot，包括 root 和 inner 和 leaf
 	private final Map<SlotRequestId, TaskSlot> allTaskSlots;
 
-	/** Root nodes which have not been completed because the allocated slot is still pending. */
+	/**
+	 * Root nodes which have not been completed because the allocated slot is still pending.
+	 */
 	// root MultiTaskSlot，但底层的 Physical Slot 还没有分配好
 	private final Map<SlotRequestId, MultiTaskSlot> unresolvedRootSlots;
 
-	/** Root nodes which have been completed (the underlying allocated slot has been assigned). */
+	/**
+	 * Root nodes which have been completed (the underlying allocated slot has been assigned).
+	 */
 	// root MultiTaskSlot，底层的 physical slot 也已经分配好了，按照两层 map 的方式组织，
 	// 可以通过已分配的 Physical slot 所在的TaskManager 的位置进行查找
 	private final Map<TaskManagerLocation, Map<AllocationID, MultiTaskSlot>> resolvedRootSlots;
 
 	SlotSharingManager(
-			SlotSharingGroupId slotSharingGroupId,
-			AllocatedSlotActions allocatedSlotActions,
-			SlotOwner slotOwner) {
+		SlotSharingGroupId slotSharingGroupId,
+		AllocatedSlotActions allocatedSlotActions,
+		SlotOwner slotOwner) {
 		this.slotSharingGroupId = Preconditions.checkNotNull(slotSharingGroupId);
 		this.allocatedSlotActions = Preconditions.checkNotNull(allocatedSlotActions);
 		this.slotOwner = Preconditions.checkNotNull(slotOwner);
@@ -137,17 +145,17 @@ public class SlotSharingManager {
 	 * Creates a new root slot with the given {@link SlotRequestId}, {@link SlotContext} future and
 	 * the {@link SlotRequestId} of the allocated slot.
 	 *
-	 * @param slotRequestId of the root slot
-	 * @param slotContextFuture with which we create the root slot
+	 * @param slotRequestId          of the root slot
+	 * @param slotContextFuture      with which we create the root slot
 	 * @param allocatedSlotRequestId slot request id of the underlying allocated slot which can be used
 	 *                               to cancel the pending slot request or release the allocated slot
 	 * @return New root slot
 	 */
 	@Nonnull
 	MultiTaskSlot createRootSlot(
-			SlotRequestId slotRequestId,
-			CompletableFuture<? extends SlotContext> slotContextFuture,
-			SlotRequestId allocatedSlotRequestId) {
+		SlotRequestId slotRequestId,
+		CompletableFuture<? extends SlotContext> slotContextFuture,
+		SlotRequestId allocatedSlotRequestId) {
 		LOG.debug("Create multi task slot [{}] in slot [{}].", slotRequestId, allocatedSlotRequestId);
 
 		final CompletableFuture<SlotContext> slotContextFutureAfterRootSlotResolution = new CompletableFuture<>();
@@ -170,15 +178,16 @@ public class SlotSharingManager {
 	}
 
 	private SlotSharingManager.MultiTaskSlot createAndRegisterRootSlot(
-			SlotRequestId slotRequestId,
-			SlotRequestId allocatedSlotRequestId,
-			CompletableFuture<? extends SlotContext> slotContextFuture) {
+		SlotRequestId slotRequestId,
+		SlotRequestId allocatedSlotRequestId,
+		CompletableFuture<? extends SlotContext> slotContextFuture) {
 		final MultiTaskSlot rootMultiTaskSlot = new MultiTaskSlot(
 			slotRequestId,
 			slotContextFuture,
 			allocatedSlotRequestId);
 
 		allTaskSlots.put(slotRequestId, rootMultiTaskSlot);
+		// 先加入到 unresolvedRootSlots 中
 		unresolvedRootSlots.put(slotRequestId, rootMultiTaskSlot);
 		return rootMultiTaskSlot;
 	}
@@ -199,20 +208,28 @@ public class SlotSharingManager {
 		}
 	}
 
+	/**
+	 * Flink 中不同 Task 只要在同一个 SlotSharingGroup 中就可以进行资源共享，但有一个隐含的条件是，这两个 Task 需要是不同的 Operator 的子任务。
+	 * 例如，如果 map 算子的并行度为三，map[1] 子任务和 map[2] 子任务是不能落在同一个 PhysicalSlot 中的。在 listResolvedRootSlotInfo 和 getUnresolvedRootSlot 中，
+	 * 都有 !multiTaskSlot.contains(groupId) 的逻辑，也就是说要确保一棵 TaskSlot 构成的树中不会出现同一个算子的不同子任务。
+	 *
+	 * @param groupId
+	 * @return
+	 */
 	@Nonnull
 	public Collection<SlotSelectionStrategy.SlotInfoAndResources> listResolvedRootSlotInfo(@Nullable AbstractID groupId) {
 		// 列出已经分配了physical slot 的root MultiTaskSlot，但要求 MultiTaskSlot 不包含指定的 groupId
 		return resolvedRootSlots
 			.values()
 			.stream()
-				.flatMap((Map<AllocationID, MultiTaskSlot> map) -> createValidMultiTaskSlotInfos(map, groupId))
-				.map((MultiTaskSlotInfo multiTaskSlotInfo) -> {
-					SlotInfo slotInfo = multiTaskSlotInfo.getSlotInfo();
-					return new SlotSelectionStrategy.SlotInfoAndResources(
-						slotInfo,
-						slotInfo.getResourceProfile().subtract(multiTaskSlotInfo.getReservedResources()),
-						multiTaskSlotInfo.getTaskExecutorUtilization());
-				}).collect(Collectors.toList());
+			.flatMap((Map<AllocationID, MultiTaskSlot> map) -> createValidMultiTaskSlotInfos(map, groupId))
+			.map((MultiTaskSlotInfo multiTaskSlotInfo) -> {
+				SlotInfo slotInfo = multiTaskSlotInfo.getSlotInfo();
+				return new SlotSelectionStrategy.SlotInfoAndResources(
+					slotInfo,
+					slotInfo.getResourceProfile().subtract(multiTaskSlotInfo.getReservedResources()),
+					multiTaskSlotInfo.getTaskExecutorUtilization());
+			}).collect(Collectors.toList());
 	}
 
 	private Stream<MultiTaskSlotInfo> createValidMultiTaskSlotInfos(Map<AllocationID, MultiTaskSlot> taskExecutorSlots, AbstractID groupId) {
@@ -371,6 +388,8 @@ public class SlotSharingManager {
 
 	/**
 	 * {@link TaskSlot} implementation which can have multiple other task slots assigned as children.
+	 * <p>
+	 * MulTaskSlot 可以有多个子节点。 MulTaskSlot 可以作为根节点，也可以作为内部节点。 MultiTaskSlot 也实现了 PhysicalSlot.Payload 接口，可以分配给 PhysicalSlot（在作为根节点的情况下）.
 	 */
 	public final class MultiTaskSlot extends TaskSlot implements PhysicalSlot.Payload {
 
@@ -394,9 +413,9 @@ public class SlotSharingManager {
 		private ResourceProfile reservedResources;
 
 		private MultiTaskSlot(
-				SlotRequestId slotRequestId,
-				AbstractID groupId,
-				MultiTaskSlot parent) {
+			SlotRequestId slotRequestId,
+			AbstractID groupId,
+			MultiTaskSlot parent) {
 			this(
 				slotRequestId,
 				groupId,
@@ -406,9 +425,9 @@ public class SlotSharingManager {
 		}
 
 		private MultiTaskSlot(
-				SlotRequestId slotRequestId,
-				CompletableFuture<? extends SlotContext> slotContextFuture,
-				SlotRequestId allocatedSlotRequestId) {
+			SlotRequestId slotRequestId,
+			CompletableFuture<? extends SlotContext> slotContextFuture,
+			SlotRequestId allocatedSlotRequestId) {
 			this(
 				slotRequestId,
 				null,
@@ -418,11 +437,11 @@ public class SlotSharingManager {
 		}
 
 		private MultiTaskSlot(
-				SlotRequestId slotRequestId,
-				@Nullable AbstractID groupId,
-				@Nullable MultiTaskSlot parent,
-				CompletableFuture<? extends SlotContext> slotContextFuture,
-				@Nullable SlotRequestId allocatedSlotRequestId) {
+			SlotRequestId slotRequestId,
+			@Nullable AbstractID groupId,
+			@Nullable MultiTaskSlot parent,
+			CompletableFuture<? extends SlotContext> slotContextFuture,
+			@Nullable SlotRequestId allocatedSlotRequestId) {
 			super(slotRequestId, groupId);
 			Preconditions.checkNotNull(slotContextFuture);
 
@@ -459,7 +478,7 @@ public class SlotSharingManager {
 		 * this MultiTaskSlot.
 		 *
 		 * @param slotRequestId of the new multi task slot
-		 * @param groupId under which the new multi task slot is registered
+		 * @param groupId       under which the new multi task slot is registered
 		 * @return the newly allocated MultiTaskSlot
 		 */
 		MultiTaskSlot allocateMultiTaskSlot(SlotRequestId slotRequestId, AbstractID groupId) {
@@ -485,15 +504,15 @@ public class SlotSharingManager {
 		 * this MultiTaskSlot.
 		 *
 		 * @param slotRequestId of the new single task slot
-		 * @param groupId under which the new single task slot is registered
-		 * @param locality of the allocation
+		 * @param groupId       under which the new single task slot is registered
+		 * @param locality      of the allocation
 		 * @return the newly allocated {@link SingleTaskSlot}
 		 */
 		SingleTaskSlot allocateSingleTaskSlot(
-				SlotRequestId slotRequestId,
-				ResourceProfile resourceProfile,
-				AbstractID groupId,
-				Locality locality) {
+			SlotRequestId slotRequestId,
+			ResourceProfile resourceProfile,
+			AbstractID groupId,
+			Locality locality) {
 			Preconditions.checkState(!super.contains(groupId));
 
 			LOG.debug("Create single task slot [{}] in multi task slot [{}] for group {}.", slotRequestId, getSlotRequestId(), groupId);
@@ -607,7 +626,7 @@ public class SlotSharingManager {
 			SlotContext slotContext = root.getSlotContextFuture().join();
 
 			return slotContext.getResourceProfile().isMatching(
-					resourceProfile.merge(root.getReservedResources()));
+				resourceProfile.merge(root.getReservedResources()));
 		}
 
 		/**
@@ -672,24 +691,25 @@ public class SlotSharingManager {
 			String physicalSlotDescription;
 			try {
 				physicalSlotDescription = String.valueOf(slotContextFuture.getNow(null));
-			}
-			catch (Exception e) {
+			} catch (Exception e) {
 				physicalSlotDescription = '(' + ExceptionUtils.stripCompletionException(e).getMessage() + ')';
 			}
 
 			return "MultiTaskSlot{"
-					+ "requestId=" + getSlotRequestId()
-					+ ", allocatedRequestId=" + allocatedSlotRequestId
-					+ ", groupId=" + getGroupId()
-					+ ", physicalSlot=" + physicalSlotDescription
-					+ ", children=" + children.values().toString()
-					+ '}';
+				+ "requestId=" + getSlotRequestId()
+				+ ", allocatedRequestId=" + allocatedSlotRequestId
+				+ ", groupId=" + getGroupId()
+				+ ", physicalSlot=" + physicalSlotDescription
+				+ ", children=" + children.values().toString()
+				+ '}';
 		}
 	}
 
 	/**
 	 * {@link TaskSlot} implementation which harbours a {@link LogicalSlot}. The {@link SingleTaskSlot}
 	 * cannot have any children assigned.
+	 * <p>
+	 * SingleTaskSlot 只能作为叶子节点，它拥有一个 LogicalSlot，后续可以用来分配具体的 task.
 	 */
 	public final class SingleTaskSlot extends TaskSlot {
 		private final MultiTaskSlot parent;
@@ -701,11 +721,11 @@ public class SlotSharingManager {
 		private final ResourceProfile resourceProfile;
 
 		private SingleTaskSlot(
-				SlotRequestId slotRequestId,
-				ResourceProfile resourceProfile,
-				AbstractID groupId,
-				MultiTaskSlot parent,
-				Locality locality) {
+			SlotRequestId slotRequestId,
+			ResourceProfile resourceProfile,
+			AbstractID groupId,
+			MultiTaskSlot parent,
+			Locality locality) {
 			super(slotRequestId, groupId);
 
 			this.resourceProfile = Preconditions.checkNotNull(resourceProfile);
@@ -756,18 +776,17 @@ public class SlotSharingManager {
 				LogicalSlot slot = singleLogicalSlotFuture.getNow(null);
 				if (slot != null) {
 					logicalSlotString = "(requestId=" + slot.getSlotRequestId()
-							+ ", allocationId=" + slot.getAllocationId() + ')';
+						+ ", allocationId=" + slot.getAllocationId() + ')';
 				}
-			}
-			catch (Exception e) {
+			} catch (Exception e) {
 				logicalSlotString = '(' + ExceptionUtils.stripCompletionException(e).getMessage() + ')';
 			}
 
 			return "SingleTaskSlot{"
-					+ "logicalSlot=" + logicalSlotString
-					+ ", request=" + getSlotRequestId()
-					+ ", group=" + getGroupId()
-					+ '}';
+				+ "logicalSlot=" + logicalSlotString
+				+ ", request=" + getSlotRequestId()
+				+ ", group=" + getGroupId()
+				+ '}';
 		}
 	}
 

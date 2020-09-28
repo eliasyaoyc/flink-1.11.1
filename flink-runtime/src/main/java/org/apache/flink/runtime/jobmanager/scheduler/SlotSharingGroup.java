@@ -34,6 +34,8 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * defined by a co-location hint.
  *
  * 相同的 SlotSharingGroup 的不同 JobVertex 的子任务可以被分配在同一个 slot 中，但不保证能做到。
+ * 对于普通的 SlotSharingGroup 的约束，行程的树形结构时：MultiTaskSlot 作为根节点，多个 SingleTaskSlot 作为叶子节点，这些叶子节点分配代表不同的任务，用来区分它们的JobVertexId 不同。
+ * 对于 CoLocationGroup 强制约束，会在 MultiTaskSlot 根节点的下一级创建一个 MultiTaskSlot 节点（用 CoLocationGroup ID） 来区分，同一个 CoLocationGroup 约束下的子任务进一步作为第二层 MultiTaskSlot 的叶子节点。
  */
 public class SlotSharingGroup implements java.io.Serializable {
 

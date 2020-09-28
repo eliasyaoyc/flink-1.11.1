@@ -87,6 +87,8 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  *
  * <p>TODO : Make pending requests location preference aware
  * TODO : Make pass location preferences to ResourceManager when sending a slot request
+ *
+ * JobManager 使用 SlotPool 来向 ResourceManager 申请 slot，并管理所有分配给该 JobManager 的 slots
  */
 public class SlotPoolImpl implements SlotPool {
 
@@ -236,6 +238,7 @@ public class SlotPoolImpl implements SlotPool {
 		this.jobManagerAddress = newJobManagerAddress;
 		this.componentMainThreadExecutor = componentMainThreadExecutor;
 
+		// 定时任务 周期性检查空闲的 slot，如果 slot 空闲时间过长，会将该 slot 归还给 TaskManager
 		scheduleRunAsync(this::checkIdleSlot, idleSlotTimeout);
 		scheduleRunAsync(this::checkBatchSlotTimeout, batchSlotTimeout);
 
