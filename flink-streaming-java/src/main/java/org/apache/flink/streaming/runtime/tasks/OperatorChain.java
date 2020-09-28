@@ -126,10 +126,12 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 		StreamOperatorFactory<OUT> operatorFactory = configuration.getStreamOperatorFactory(userCodeClassloader);
 
 		// we read the chained configs, and the order of record writer registrations by output name
+		// OperationChain 内部所有的 operator 的配置
 		Map<Integer, StreamConfig> chainedConfigs = configuration.getTransitiveChainedTaskConfigsWithSelf(userCodeClassloader);
 
 		// create the final output stream writers
 		// we iterate through all the out edges from this job vertex and create a stream output
+		// 所有的输出边，这是对外输出，不包含内部 operator 之间的数据传输
 		List<StreamEdge> outEdgesInOrder = configuration.getOutEdgesInOrder(userCodeClassloader);
 		Map<StreamEdge, RecordWriterOutput<?>> streamOutputMap = new HashMap<>(outEdgesInOrder.size());
 		this.streamOutputs = new RecordWriterOutput<?>[outEdgesInOrder.size()];
@@ -137,6 +139,7 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 		// from here on, we need to make sure that the output writers are shut down again on failure
 		boolean success = false;
 		try {
+			// 对外输出的 RecordWriterOutput
 			for (int i = 0; i < outEdgesInOrder.size(); i++) {
 				StreamEdge outEdge = outEdgesInOrder.get(i);
 
@@ -152,6 +155,7 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 
 			// we create the chain of operators and grab the collector that leads into the chain
 			List<StreamOperatorWrapper<?, ?>> allOpWrappers = new ArrayList<>(chainedConfigs.size());
+			// 这里会递归调用，为 OperatorChain 内部的所有的 Operator 都创建 output
 			this.chainEntryPoint = createOutputCollector(
 				containingTask,
 				configuration,
@@ -162,6 +166,7 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 				containingTask.getMailboxExecutorFactory());
 
 			if (operatorFactory != null) {
+				// chainEntryPoint 时 headOperator 的 output
 				WatermarkGaugeExposingOutput<StreamRecord<OUT>> output = getChainEntryPoint();
 
 				Tuple2<OP, Optional<ProcessingTimeService>> headOperatorAndTimeService = StreamOperatorFactoryUtil.createOperator(
@@ -367,6 +372,19 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 	//  initialization utilities
 	// ------------------------------------------------------------------------
 
+	/**
+	 * 创建 output collector
+	 *
+	 * @param containingTask
+	 * @param operatorConfig
+	 * @param chainedConfigs
+	 * @param userCodeClassloader
+	 * @param streamOutputs
+	 * @param allOperatorWrappers
+	 * @param mailboxExecutorFactory
+	 * @param <T>
+	 * @return
+	 */
 	private <T> WatermarkGaugeExposingOutput<StreamRecord<T>> createOutputCollector(
 			StreamTask<?, ?> containingTask,
 			StreamConfig operatorConfig,
@@ -386,10 +404,14 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 		}
 
 		// Create collectors for the chained outputs
+		// OperationChain 内部 Operator 之间的边
 		for (StreamEdge outputEdge : operatorConfig.getChainedOutputs(userCodeClassloader)) {
 			int outputId = outputEdge.getTargetId();
 			StreamConfig chainedOpConfig = chainedConfigs.get(outputId);
 
+			// 创建当前节点的下游节点， 并返回当前节点的 output
+			// createChainedOperator 在创建 operator 的时候，会调用 createOutputCollector 为operator 创建output
+			// 随意会行程递归调用关系，所有的 operator 以及它们的output 都会被创建出来
 			WatermarkGaugeExposingOutput<StreamRecord<T>> output = createChainedOperator(
 				containingTask,
 				chainedOpConfig,
@@ -409,10 +431,12 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 
 		if (selectors == null || selectors.isEmpty()) {
 			// simple path, no selector necessary
+			// 只有一个输出
 			if (allOutputs.size() == 1) {
 				return allOutputs.get(0).f0;
 			}
 			else {
+				// 不止有一个输出，需要使用 BroadcastingOutputCollector 进行封装
 				// send to N outputs. Note that this includes the special case
 				// of sending to zero outputs
 				@SuppressWarnings({"unchecked", "rawtypes"})
@@ -456,6 +480,7 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 			OutputTag<IN> outputTag,
 			MailboxExecutorFactory mailboxExecutorFactory) {
 		// create the output that the operator writes to first. this may recursively create more operators
+		// 为当前 operator 创建 output
 		WatermarkGaugeExposingOutput<StreamRecord<OUT>> chainedOperatorOutput = createOutputCollector(
 			containingTask,
 			operatorConfig,
@@ -466,6 +491,7 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 			mailboxExecutorFactory);
 
 		// now create the operator and give it the output collector to write its output to
+		// 从 StreamConfig 中取出当前 Operator
 		Tuple2<OneInputStreamOperator<IN, OUT>, Optional<ProcessingTimeService>> chainedOperatorAndTimeService =
 			StreamOperatorFactoryUtil.createOperator(
 				operatorConfig.getStreamOperatorFactory(userCodeClassloader),
@@ -477,6 +503,8 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 		OneInputStreamOperator<IN, OUT> chainedOperator = chainedOperatorAndTimeService.f0;
 		allOperatorWrappers.add(createOperatorWrapper(chainedOperator, containingTask, operatorConfig, chainedOperatorAndTimeService.f1));
 
+		// 这里是在为当前 operator 前向的 operator 创建 output
+		// 所以当前 operator 被传递给前一个 operator 的 output，这样前一个 operator 的输出就可以直接调用当前 operator
 		WatermarkGaugeExposingOutput<StreamRecord<IN>> currentOperatorOutput;
 		if (containingTask.getExecutionConfig().isObjectReuseEnabled()) {
 			currentOperatorOutput = new ChainingOutput<>(chainedOperator, this, outputTag);
@@ -560,9 +588,12 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 		Gauge<Long> getWatermarkGauge();
 	}
 
+	/**
+	 * 内部类，接受到当前算子提交的数据时，直接将调用下游算子的 processElement 方法
+	 */
 	static class ChainingOutput<T> implements WatermarkGaugeExposingOutput<StreamRecord<T>> {
 
-		// 注册的下游operator
+		// 下游operator
 		protected final OneInputStreamOperator<T, ?> operator;
 		protected final Counter numRecordsIn;
 		protected final WatermarkGauge watermarkGauge = new WatermarkGauge();
@@ -594,7 +625,11 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 			this.outputTag = outputTag;
 		}
 
-		// 发送消息方法的实现，直接将消息对象传递给operator 处理，不经过序列化/反序列化，网络传输
+		/**
+		 * 发送消息方法的实现，直接将消息对象传递给operator 处理，不经过序列化/反序列化，网络传输
+		 *
+		 * @param record The record to collect.
+		 */
 		@Override
 		public void collect(StreamRecord<T> record) {
 			if (this.outputTag != null) {

@@ -859,6 +859,11 @@ public class ExecutionGraph implements AccessExecutionGraph {
 		}
 	}
 
+	/**
+	 * 调度各个子任务
+	 *
+	 * @throws JobException
+	 */
 	public void scheduleForExecution() throws JobException {
 
 		assertRunningInJobMasterMainThread();
@@ -871,6 +876,7 @@ public class ExecutionGraph implements AccessExecutionGraph {
 
 		if (transitionState(JobStatus.CREATED, JobStatus.RUNNING)) {
 
+			// 调度任务
 			final CompletableFuture<Void> newSchedulingFuture = SchedulingUtils.schedule(
 				scheduleMode,
 				getAllExecutionVertices(),

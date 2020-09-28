@@ -79,6 +79,7 @@ public class SourceStreamTask<OUT, SRC extends SourceFunction<OUT>, OP extends S
 		// we check if the source is actually inducing the checkpoints, rather
 		// than the trigger
 		SourceFunction<?> source = headOperator.getUserFunction();
+		// 如果用户提供的 SourceFunction 是 ExternallyInducedSource, 则需要创建一个 CheckpointTrigger 对象昂提供给 ExternallyInducedSource
 		if (source instanceof ExternallyInducedSource) {
 			externallyInducedCheckpoints = true;
 
@@ -198,6 +199,9 @@ public class SourceStreamTask<OUT, SRC extends SourceFunction<OUT>, OP extends S
 		@Override
 		public void run() {
 			try {
+				// 对source而言，就是调用 head operator 的 run 方法
+				// head operator 是一个 StreamSource，最终会调用用户提供的 SourceFunction 的 run 方法，一般是一个循环
+				// head operator 通过 Output 将数据传递给下游的算子
 				headOperator.run(lock, getStreamStatusMaintainer(), operatorChain);
 				completionFuture.complete(null);
 			} catch (Throwable t) {

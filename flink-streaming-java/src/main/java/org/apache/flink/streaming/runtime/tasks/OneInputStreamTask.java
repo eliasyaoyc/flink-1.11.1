@@ -81,6 +81,7 @@ public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamO
 
 	@Override
 	public void init() throws Exception {
+		// 创建一个 StreamInputProcessor
 		StreamConfig configuration = getConfiguration();
 		int numberOfInputs = configuration.getNumberOfInputs();
 

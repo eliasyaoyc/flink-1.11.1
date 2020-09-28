@@ -554,6 +554,7 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 		//  Initial State transition
 		// ----------------------------
 		while (true) {
+			// ① 初始化状态 ExecutionState.CREATED -> ExecutionState.DEPLOYING
 			ExecutionState current = this.executionState;
 			if (current == ExecutionState.CREATED) {
 				if (transitionState(ExecutionState.CREATED, ExecutionState.DEPLOYING)) {

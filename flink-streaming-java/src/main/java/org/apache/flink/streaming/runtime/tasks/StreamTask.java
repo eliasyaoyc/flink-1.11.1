@@ -129,6 +129,21 @@ import java.util.concurrent.ThreadFactory;
  *        +----> task specific cleanup()
  * }</pre>
  *
+ *
+ * StreamTask 完整的生命周期包括：
+ *
+ * 创建状态存储后端，为 OperatorChain 中的所有算子提供状态
+ * 加载 OperatorChain 中的所有算子
+ * 所有的 operator 调用 setup
+ * task 相关的初始化操作
+ * 所有 operator 调用 initializeState 初始化状态
+ * 所有的 operator 调用 open
+ * run 方法循环处理数据
+ * 所有 operator 调用 close
+ * 所有 operator 调用 dispose
+ * 通用的 cleanup 操作
+ * task 相关的 cleanup 操作
+ *
  * <p>The {@code StreamTask} has a lock object called {@code lock}. All calls to methods on a
  * {@code StreamOperator} must be synchronized on this lock object to ensure that no methods
  * are called concurrently.
@@ -450,10 +465,12 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		disposedOperators = false;
 		LOG.debug("Initializing {}.", getName());
 
+		// 创建 OperationChain，会加载每一个 operator，并调用 setup 方法.
 		operatorChain = new OperatorChain<>(this, recordWriter);
 		headOperator = operatorChain.getHeadOperator();
 
 		// task specific initialization
+		// 和具体 StreamTask 子类相关的初始化操作
 		init();
 
 		// save the work of reloading state, etc, if the task is already canceled
@@ -1008,6 +1025,12 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	//  State backend
 	// ------------------------------------------------------------------------
 
+	/**
+	 * 创建状态存储后端.
+	 *
+	 * @return
+	 * @throws Exception
+	 */
 	private StateBackend createStateBackend() throws Exception {
 		final StateBackend fromApplication = configuration.getStateBackend(getUserCodeClassLoader());
 
