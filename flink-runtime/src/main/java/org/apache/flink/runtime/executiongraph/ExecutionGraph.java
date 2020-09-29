@@ -435,6 +435,21 @@ public class ExecutionGraph implements AccessExecutionGraph {
 		return Optional.ofNullable(stateBackendName);
 	}
 
+	/**
+	 * 开启 Checkpoint 会创建一个 CheckpointCoordinator
+	 * 并注册一个作业状态的监听 CheckpointCoordinatorDeActivator,
+	 * CheckpointCoordinatorDeActivator 会在作业状态发生改变时得到通知。
+	 *
+	 * @param chkConfig
+	 * @param verticesToTrigger
+	 * @param verticesToWaitFor
+	 * @param verticesToCommitTo
+	 * @param masterHooks
+	 * @param checkpointIDCounter
+	 * @param checkpointStore
+	 * @param checkpointStateBackend
+	 * @param statsTracker
+	 */
 	public void enableCheckpointing(
 			CheckpointCoordinatorConfiguration chkConfig,
 			List<ExecutionJobVertex> verticesToTrigger,

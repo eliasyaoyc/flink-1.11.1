@@ -1163,6 +1163,7 @@ public class Task implements Runnable, TaskSlotPayload, TaskActions, PartitionPr
 
 		if (executionState == ExecutionState.RUNNING && invokable != null) {
 			try {
+				// 真正的调用逻辑
 				invokable.triggerCheckpointAsync(checkpointMetaData, checkpointOptions, advanceToEndOfEventTime);
 			}
 			catch (RejectedExecutionException ex) {
