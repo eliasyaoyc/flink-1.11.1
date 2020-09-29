@@ -150,6 +150,8 @@ public interface CheckpointedFunction {
 	 *
 	 * @param context the context for drawing a snapshot of the operator
 	 * @throws Exception Thrown, if state could not be created ot restored.
+	 *
+	 * 在创建检查点的时候调用
 	 */
 	void snapshotState(FunctionSnapshotContext context) throws Exception;
 
@@ -159,6 +161,11 @@ public interface CheckpointedFunction {
 	 *
 	 * @param context the context for initializing the operator
 	 * @throws Exception Thrown, if state could not be created ot restored.
+	 *
+	 * 在初始化的时候调用 （在从检查点恢复状态的时候也会先调用该方法）
+	 * 通过 {@link FunctionInitializationContext} 可以访问到 {@link OperatorStateStore} 和 {@link KeyedStateStore}
+	 * 通过 {@link OperatorStateStore} 获取 Operator state
+	 * 通过 {@link KeyedStateStore} 获取 keyed state
 	 */
 	void initializeState(FunctionInitializationContext context) throws Exception;
 }

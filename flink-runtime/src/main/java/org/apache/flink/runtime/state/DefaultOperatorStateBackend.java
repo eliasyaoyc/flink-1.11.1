@@ -264,10 +264,12 @@ public class DefaultOperatorStateBackend implements OperatorStateBackend {
 		stateDescriptor.initializeSerializerUnlessSet(getExecutionConfig());
 		TypeSerializer<S> partitionStateSerializer = Preconditions.checkNotNull(stateDescriptor.getElementSerializer());
 
+		// 获取状态
 		@SuppressWarnings("unchecked")
 		PartitionableListState<S> partitionableListState = (PartitionableListState<S>) registeredOperatorStates.get(name);
 
 		if (null == partitionableListState) {
+			// 状态不存在，创建一个新的状态
 			// no restored state for the state name; simply create new state holder
 
 			partitionableListState = new PartitionableListState<>(
@@ -289,6 +291,7 @@ public class DefaultOperatorStateBackend implements OperatorStateBackend {
 			RegisteredOperatorStateBackendMetaInfo<S> restoredPartitionableListStateMetaInfo =
 				partitionableListState.getStateMetaInfo();
 
+			// 状态已经存在，检查是否兼容
 			// check compatibility to determine if new serializers are incompatible
 			TypeSerializer<S> newPartitionStateSerializer = partitionStateSerializer.duplicate();
 
